@@ -1,0 +1,28 @@
+# Dokumen referensi lokal (tidak dipublikasikan)
+/konsep-forum-ecommerce-aquascape (2).md
+/openapi-aquascape.yaml
+
+# Konfigurasi lokal dan rahasia
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Log dan hasil pengujian
+logs/
+*.log
+coverage/
+
+# Hasil build dan file sementara
+dist/
+build/
+tmp/
+temp/
+
+# Editor dan sistem operasi
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
