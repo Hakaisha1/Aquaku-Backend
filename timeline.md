@@ -15,7 +15,7 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 | ID | Milestone | Dependensi | Status |
 | --- | --- | --- | --- |
 | M0 | Inisialisasi dan acuan proyek | Tidak ada | Selesai |
-| M1 | Fondasi NestJS dan PostgreSQL | M0 | Belum dimulai |
+| M1 | Fondasi NestJS dan PostgreSQL | M0 | Berjalan |
 | M2 | Akun, autentikasi, dan OTP development | M1 | Belum dimulai |
 | M3 | Marketplace dan aturan listing | M2; keputusan wilayah dan lifecycle listing | Belum dimulai |
 | M4 | Membership, add-on, dan admin | M3; keputusan lifecycle hak berbayar | Belum dimulai |
@@ -23,7 +23,7 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 | M6 | Forum dan MongoDB | M4 dan M5 sebagai prioritas delivery | Belum dimulai |
 | M7 | Kesiapan uji pengguna dan rilis | M4–M6 untuk MVP forum + marketplace | Belum dimulai |
 
-**Posisi saat ini:** checkpoint M0 selesai pada commit yang memuat pembaruan ini. Berhenti sebelum M1; belum ada implementasi aplikasi atau jadwal kalender yang disepakati.
+**Posisi saat ini:** M0 selesai; M1 sedang dikerjakan dalam checkpoint atomik. Belum masuk M2 dan belum ada jadwal kalender yang disepakati.
 
 ## 3. Checklist dan kriteria selesai
 
@@ -43,9 +43,9 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 
 ### M1 — Fondasi NestJS dan PostgreSQL
 
-- [ ] Tentukan versi toolchain yang kompatibel dan satu dependency manager; simpan lockfile.
-- [ ] Scaffold NestJS + TypeScript tanpa menimpa dokumen atau pekerjaan yang sudah ada.
-- [ ] Siapkan perintah build, lint, unit test, dan e2e test.
+- [x] Tentukan versi toolchain yang kompatibel dan satu dependency manager; simpan lockfile.
+- [x] Scaffold NestJS + TypeScript tanpa menimpa dokumen atau pekerjaan yang sudah ada.
+- [x] Siapkan perintah build, lint, unit test, dan e2e test.
 - [ ] Siapkan Docker Compose PostgreSQL, volume data, dan health check database.
 - [ ] Integrasikan Prisma dan mekanisme migrasi yang dapat dijalankan ulang dari database kosong.
 - [ ] Validasi environment saat startup; sesuaikan `.env.example` tanpa secret asli.
@@ -219,6 +219,14 @@ Dokumen ini **bukan izin otomatis untuk commit, membuat branch, atau push**. Jan
 | --- | --- | --- | --- | --- |
 | Belum dicatat | M0 | Git, remote, `.gitignore`, README, dan template env awal | Pemeriksaan ignore, staged whitespace, dan status Git pada inisialisasi | `edeca25` |
 | 2026-11-08 | M0 | Acuan sistem dan timeline masuk repositori; README selaras; berhenti sebelum M1 | Tinjauan konsistensi dokumen, aturan ignore, dan pemeriksaan whitespace Git; test aplikasi tidak dijalankan karena belum ada aplikasi | Commit checkpoint yang memuat baris ini |
+
+### Checkpoint M1
+
+| Checkpoint | Hasil dan validasi | Commit |
+| --- | --- | --- |
+| M1.1 — Scaffold | Node 24.22.2, npm 11, NestJS 11, TypeScript, lockfile, build/lint lulus, 1 unit test dan 1 e2e test lulus. Audit production: 0; audit keseluruhan: 30 temuan tooling development (2 low, 28 moderate), perlu ditinjau. | `Initialize NestJS application` |
+
+Validasi memakai executable Node 24 melalui npm exec karena Node global komputer masih v25. Docker Desktop berhasil dijalankan; pemeriksaan database ada di checkpoint berikutnya. `.env.example` tetap tidak dibaca/diubah karena pengaturan `private_files`.
 
 Tanggal historis tidak diisi dengan perkiraan. Tambahkan tanggal aktual pada pembaruan progres berikutnya.
 

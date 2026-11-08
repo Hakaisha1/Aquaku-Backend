@@ -4,7 +4,7 @@ Backend untuk forum komunitas dan marketplace hobiis aquascape. Cakupan awal dib
 
 ## Status dan acuan
 
-Repositori berada pada checkpoint **M0 — Inisialisasi dan acuan proyek**. Belum ada kode aplikasi, dependensi, migrasi, atau perintah menjalankan backend. Scaffold aplikasi baru dikerjakan pada M1.
+**M1 — Fondasi NestJS dan PostgreSQL sedang dikerjakan.** Scaffold NestJS beserta build, lint, unit test, dan e2e test sudah tersedia. Autentikasi dan fitur bisnis belum diimplementasikan.
 
 - [`revision.md`](revision.md): keputusan sistem terbaru dan detail yang belum diputuskan.
 - [`timeline.md`](timeline.md): milestone, checklist progres, kriteria selesai, dan aturan commit atomik.
@@ -60,6 +60,27 @@ Nilai tersebut menjadi baseline implementasi MVP, tetapi tetap perlu validasi bi
 
 Backend memvalidasi autentikasi, verifikasi HP, wilayah, izin tag, foto, cooldown, dan kuota. Second/Like New memerlukan minimal tiga foto. Detail lifecycle yang belum final tercatat dalam `revision.md` dan gerbang keputusan `timeline.md`.
 
+## Menjalankan scaffold
+
+Gunakan **Node.js 24 LTS** (versi acuan `.nvmrc`: 24.22.2) dan **npm 11**. Dependency dikunci dalam `package-lock.json`. NestJS 11 dipakai agar toolchain CommonJS dan Jest tetap kompatibel.
+
+```sh
+npm ci
+npm run build
+npm start
+```
+
+Untuk development gunakan `npm run start:dev`. Pada checkpoint scaffold, aplikasi mendengarkan port 3000; endpoint bisnis belum tersedia.
+
+```sh
+npm run lint
+npm test
+npm run test:e2e
+npm run test:cov
+```
+
+Override `multer` 2.5.0 menutup advisory DoS GHSA-q7qp-rjg7-q26m pada dependency transitif NestJS 11. Jangan menjalankan `npm audit fix --force` tanpa meninjau perubahan major. Temuan audit tooling development dicatat di timeline dan perlu ditinjau sebelum CI/rilis.
+
 ## Konfigurasi dan keamanan development
 
 `.env.example` adalah template awal, belum kontrak konfigurasi aplikasi yang sudah berjalan. Nama variabel dan kebutuhan layanan akan diselaraskan pada M1. Belum ada kewajiban menjalankan MongoDB pada tahap fondasi PostgreSQL.
@@ -83,4 +104,4 @@ Dokumen lokal `konsep-forum-ecommerce-aquascape (2).md` dan `openapi-aquascape.y
 
 Satu commit menyelesaikan satu tujuan logis beserta test, migrasi, dan dokumentasi yang diperlukan. Jangan mencampur fitur berbeda atau memasukkan secret. Tinjau staged diff dan jalankan validasi terkait sebelum commit; jangan mengklaim test lulus jika belum dijalankan.
 
-Urutan berikutnya adalah **M1 — Fondasi NestJS dan PostgreSQL** sesuai `timeline.md`. Tidak ada scaffold, instalasi dependency, atau integrasi layanan pada checkpoint M0 ini.
+Lanjutkan hanya checklist **M1 — Fondasi NestJS dan PostgreSQL** sesuai `timeline.md`. M2 dan modul bisnis belum dimulai.

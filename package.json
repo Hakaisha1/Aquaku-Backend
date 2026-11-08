@@ -1,0 +1,49 @@
+{
+  "name": "aquaku-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aquaku community and marketplace backend",
+  "engines": { "node": ">=24.15.0 <25", "npm": ">=11 <12" },
+  "packageManager": "npm@11.6.2",
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "lint": "eslint src test",
+    "test": "jest --runInBand",
+    "test:cov": "jest --runInBand --coverage",
+    "test:e2e": "jest --config test/jest-e2e.json --runInBand"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.2.8",
+    "@nestjs/core": "11.2.8",
+    "@nestjs/platform-express": "11.2.8",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@nestjs/cli": "11.0.24",
+    "@nestjs/testing": "11.2.8",
+    "@types/express": "^5.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "24.19.2",
+    "@types/supertest": "7.2.1",
+    "eslint": "10.14.0",
+    "jest": "30.5.2",
+    "supertest": "7.3.2",
+    "ts-jest": "29.4.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1"
+  },
+  "overrides": { "multer": "2.5.0" },
+  "jest": {
+    "moduleFileExtensions": ["js", "json", "ts"],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": { "^.+\\.ts$": ["ts-jest", { "tsconfig": "<rootDir>/../tsconfig.json" }] },
+    "collectCoverageFrom": ["**/*.ts", "!main.ts", "!**/*.module.ts"],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node"
+  }
+}
