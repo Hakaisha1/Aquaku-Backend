@@ -231,6 +231,8 @@ Dokumen ini **bukan izin otomatis untuk commit, membuat branch, atau push**. Jan
 
 | M1.3 — Konfigurasi dan HTTP | Build/lint lulus; 85 unit test dan 56 e2e test lulus; konfigurasi invalid ditolak tanpa membocorkan nilai sensitif, prefix/DTO/error/CORS teruji; audit production 0. Template env masih terblokir dan belum ditandai selesai. | `Validate configuration and HTTP requests` |
 
+| M1.2a — Port database host | Pengujian host menemukan autentikasi berbeda di port 5432; mapping dipindah ke loopback 5433. Compose melaporkan `127.0.0.1:5433`; koneksi host melalui Prisma berhasil. Port internal dan volume tetap sama. | `Isolate the development PostgreSQL host port` |
+
 Validasi memakai executable Node 24 melalui npm exec karena Node global komputer masih v25. Docker Desktop berhasil dijalankan; pemeriksaan database ada di checkpoint berikutnya. `.env.example` tetap tidak dibaca/diubah karena pengaturan `private_files`.
 
 Tanggal historis tidak diisi dengan perkiraan. Tambahkan tanggal aktual pada pembaruan progres berikutnya.

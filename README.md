@@ -92,9 +92,9 @@ docker compose ps
 docker compose exec -T postgres psql -U aquaku -d aquaku -c "SELECT 1;"
 ```
 
-Compose memakai PostgreSQL 17 dengan health check dan named volume `postgres_data`. Port database dipublikasikan hanya ke loopback host `127.0.0.1:5432`. Jika port dipakai layanan lain, hentikan layanan tersebut atau sesuaikan mapping dan URL database secara bersamaan.
+Compose memakai PostgreSQL 17 dengan health check dan named volume `postgres_data`. Port database dipublikasikan hanya ke loopback host `127.0.0.1:5433` (port internal container tetap 5432). Jika port dipakai layanan lain, hentikan layanan tersebut atau sesuaikan mapping dan URL database secara bersamaan.
 
-URL development host: `postgresql://aquaku:aquaku_dev_password@127.0.0.1:5432/aquaku`. Kredensial ini fixture development yang sengaja publik; jangan gunakan untuk production. Docker Compose di tahap ini hanya menjalankan database, bukan aplikasi.
+URL development host: `postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku`. Kredensial ini fixture development yang sengaja publik; jangan gunakan untuk production. Docker Compose di tahap ini hanya menjalankan database, bukan aplikasi.
 
 ```sh
 docker compose stop postgres
@@ -122,7 +122,7 @@ Contoh nilai development (bukan secret production):
 APP_ENV=development
 PORT=3000
 API_PREFIX=/api/v1
-DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5432/aquaku
+DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku
 ```
 
 `.env.example` awal belum diselaraskan karena dilindungi pengaturan `private_files` editor. Jangan menganggap semua variabel dalam template awal sudah dibutuhkan: JWT dan MongoDB belum digunakan pada M1. Ikuti tabel ini sampai template dapat diperbarui dengan akses yang diizinkan.
