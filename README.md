@@ -70,7 +70,7 @@ npm run build
 npm start
 ```
 
-Untuk development gunakan `npm run start:dev`. Pada checkpoint scaffold, aplikasi mendengarkan port 3000; endpoint bisnis belum tersedia.
+Untuk development gunakan `npm run start:dev`. Sebelum menjalankan aplikasi, siapkan `DATABASE_URL` sesuai bagian konfigurasi. Port default adalah 3000; endpoint bisnis belum tersedia.
 
 ```sh
 npm run lint
@@ -106,7 +106,28 @@ docker compose down
 
 ## Konfigurasi dan keamanan development
 
-`.env.example` adalah template awal, belum kontrak konfigurasi aplikasi yang sudah berjalan. Nama variabel dan kebutuhan layanan akan diselaraskan pada M1. Belum ada kewajiban menjalankan MongoDB pada tahap fondasi PostgreSQL.
+Aplikasi memuat `.env` saat startup tanpa menimpa environment proses yang sudah tersedia, lalu memvalidasi konfigurasi sebelum inisialisasi NestJS. Unit/e2e test tidak memuat `.env` lokal.
+
+| Variabel | Aturan M1 |
+| --- | --- |
+| `APP_ENV` | `development`, `test`, atau `production`; default `development` |
+| `PORT` | Integer 1–65535; default `3000` |
+| `API_PREFIX` | Path tanpa trailing slash; default `/api/v1` |
+| `DATABASE_URL` | Wajib, URL PostgreSQL dengan host dan nama database |
+| `CORS_ORIGIN` | Opsional; satu origin HTTP/HTTPS tanpa path/kredensial/wildcard; hapus variabel untuk menonaktifkan CORS, jangan isi string kosong |
+
+Contoh nilai development (bukan secret production):
+
+```dotenv
+APP_ENV=development
+PORT=3000
+API_PREFIX=/api/v1
+DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5432/aquaku
+```
+
+`.env.example` awal belum diselaraskan karena dilindungi pengaturan `private_files` editor. Jangan menganggap semua variabel dalam template awal sudah dibutuhkan: JWT dan MongoDB belum digunakan pada M1. Ikuti tabel ini sampai template dapat diperbarui dengan akses yang diizinkan.
+
+Request menggunakan whitelist DTO dan menolak field asing. Error HTTP memakai bentuk `{ "error": { "code": "...", "message": "..." } }`; detail exception internal tidak dikirim ke klien. Prefix, validasi, filter error, dan CORS diterapkan melalui konfigurasi aplikasi yang juga dipakai e2e test.
 
 - Jangan commit `.env`, secret asli, token, atau data pribadi.
 - Mode OTP prototipe memakai pengirim lokal tanpa biaya SMS/WhatsApp, lengkap dengan masa berlaku dan pembatasan percobaan.
