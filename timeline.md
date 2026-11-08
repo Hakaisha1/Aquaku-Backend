@@ -15,7 +15,7 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 | ID | Milestone | Dependensi | Status |
 | --- | --- | --- | --- |
 | M0 | Inisialisasi dan acuan proyek | Tidak ada | Selesai |
-| M1 | Fondasi NestJS dan PostgreSQL | M0 | Berjalan |
+| M1 | Fondasi NestJS dan PostgreSQL | M0 | Terblokir |
 | M2 | Akun, autentikasi, dan OTP development | M1 | Belum dimulai |
 | M3 | Marketplace dan aturan listing | M2; keputusan wilayah dan lifecycle listing | Belum dimulai |
 | M4 | Membership, add-on, dan admin | M3; keputusan lifecycle hak berbayar | Belum dimulai |
@@ -23,7 +23,7 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 | M6 | Forum dan MongoDB | M4 dan M5 sebagai prioritas delivery | Belum dimulai |
 | M7 | Kesiapan uji pengguna dan rilis | M4–M6 untuk MVP forum + marketplace | Belum dimulai |
 
-**Posisi saat ini:** M0 selesai; M1 sedang dikerjakan dalam checkpoint atomik. Belum masuk M2 dan belum ada jadwal kalender yang disepakati.
+**Posisi saat ini:** M0 selesai. Implementasi fondasi M1 dan validasi clone bersih selesai; penutupan M1 terblokir hanya oleh akses `.env.example` melalui pengaturan `private_files` editor. Belum masuk M2. Semua checkpoint yang sudah selesai di-commit secara atomik, belum di-push.
 
 ## 3. Checklist dan kriteria selesai
 
@@ -52,9 +52,11 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 - [ ] Sesuaikan `.env.example` tanpa secret asli; terblokir pengaturan `private_files` editor, kontrak sementara tersedia di README.
 - [x] Terapkan prefix `/api/v1`, validasi request, dan format error konsisten.
 - [x] Tambahkan health/readiness check yang membedakan aplikasi hidup dari database siap.
-- [ ] Dokumentasikan setup dari clone baru dan jalankan pengujian fondasi.
+- [x] Dokumentasikan setup dari clone baru dan jalankan pengujian fondasi.
 
 **Selesai jika:** aplikasi dapat dibangun dan dijalankan mengikuti README; konfigurasi tidak valid ditolak; readiness mendeteksi kegagalan database; pengujian terkait lulus. MongoDB, Cloudinary, OTP nyata, dan Midtrans tidak menjadi dependensi tahap ini.
+
+**Sisa untuk menutup M1:** izinkan akses `.env.example` di editor, selaraskan template dengan kontrak konfigurasi README/port host 5433, validasi kembali, lalu commit checkpoint tersebut. Jangan menandai M1 selesai sebelum langkah ini selesai. Docker PostgreSQL development tetap berjalan; tidak ada perintah reset/drop atau pekerjaan M2 yang dijalankan.
 
 ### M2 — Akun, autentikasi, dan OTP development
 
@@ -236,6 +238,8 @@ Dokumen ini **bukan izin otomatis untuk commit, membuat branch, atau push**. Jan
 | M1.3a — Error middleware HTTP | Review menemukan payload/encoding gagal diklasifikasikan 500. Kini body-parser mempertahankan 413/415 tanpa membuka detail exception; scoped lint dan 60 e2e test HTTP lulus. | `Preserve HTTP middleware error statuses` |
 
 | M1.4 — Prisma dan readiness | Prisma 7.10.1; generate/skema/build/lint lulus; baseline diterapkan ke database kosong dan deploy kedua tanpa pending migration. 89 unit, 63 e2e, serta 6 integration test lulus, termasuk startup hasil build, konfigurasi invalid, query nyata, dan readiness gagal saat DB tidak terjangkau. | `Integrate Prisma and database readiness` |
+
+| M1.5 — Verifikasi clone bersih | Clone lokal commit `3549c93`: `npm ci`, deploy/status migrasi, generate/build, lint, coverage unit, e2e, integration, dan audit production lulus. 89 unit, 63 e2e, 6 integration test; coverage unit 71,11% statement (HTTP diuji terpisah melalui e2e). Audit production 0; 30 temuan tooling development tetap dicatat. | `Record M1 verification and remaining blocker` |
 
 Validasi memakai executable Node 24 melalui npm exec karena Node global komputer masih v25. Docker Desktop berhasil dijalankan; pemeriksaan database ada di checkpoint berikutnya. `.env.example` tetap tidak dibaca/diubah karena pengaturan `private_files`.
 

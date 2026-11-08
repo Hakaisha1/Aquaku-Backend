@@ -194,4 +194,6 @@ Dokumen lokal `konsep-forum-ecommerce-aquascape (2).md` dan `openapi-aquascape.y
 
 Satu commit menyelesaikan satu tujuan logis beserta test, migrasi, dan dokumentasi yang diperlukan. Jangan mencampur fitur berbeda atau memasukkan secret. Tinjau staged diff dan jalankan validasi terkait sebelum commit; jangan mengklaim test lulus jika belum dijalankan.
 
-Lanjutkan hanya checklist **M1 — Fondasi NestJS dan PostgreSQL** sesuai `timeline.md`. M2 dan modul bisnis belum dimulai.
+Fondasi telah diverifikasi dari clone bersih: `npm ci`, migrasi/status, build, lint, 89 unit test, 63 e2e test, serta 6 integration test lulus. Audit production tidak menemukan kerentanan; audit keseluruhan masih mencatat 30 temuan tooling development (2 low, 28 moderate), bukan bukti proyek siap production.
+
+Sisa checkpoint **M1** adalah penyelarasan `.env.example` setelah akses editor diizinkan. M2 dan modul bisnis belum dimulai. Ikuti status dan catatan validasi di `timeline.md`.
