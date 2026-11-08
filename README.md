@@ -81,6 +81,29 @@ npm run test:cov
 
 Override `multer` 2.5.0 menutup advisory DoS GHSA-q7qp-rjg7-q26m pada dependency transitif NestJS 11. Jangan menjalankan `npm audit fix --force` tanpa meninjau perubahan major. Temuan audit tooling development dicatat di timeline dan perlu ditinjau sebelum CI/rilis.
 
+## PostgreSQL development dengan Docker
+
+Jalankan Docker Desktop (Linux containers), lalu:
+
+```sh
+docker compose config --quiet
+docker compose up -d --wait postgres
+docker compose ps
+docker compose exec -T postgres psql -U aquaku -d aquaku -c "SELECT 1;"
+```
+
+Compose memakai PostgreSQL 17 dengan health check dan named volume `postgres_data`. Port database dipublikasikan hanya ke loopback host `127.0.0.1:5432`. Jika port dipakai layanan lain, hentikan layanan tersebut atau sesuaikan mapping dan URL database secara bersamaan.
+
+URL development host: `postgresql://aquaku:aquaku_dev_password@127.0.0.1:5432/aquaku`. Kredensial ini fixture development yang sengaja publik; jangan gunakan untuk production. Docker Compose di tahap ini hanya menjalankan database, bukan aplikasi.
+
+```sh
+docker compose stop postgres
+docker compose start postgres
+docker compose down
+```
+
+`down` mempertahankan named volume. **`docker compose down -v` menghapus data database development**; jangan gunakan tanpa sengaja. Image dikunci ke major PostgreSQL 17; patch dapat berubah saat image ditarik ulang, bukan jaminan digest identik.
+
 ## Konfigurasi dan keamanan development
 
 `.env.example` adalah template awal, belum kontrak konfigurasi aplikasi yang sudah berjalan. Nama variabel dan kebutuhan layanan akan diselaraskan pada M1. Belum ada kewajiban menjalankan MongoDB pada tahap fondasi PostgreSQL.

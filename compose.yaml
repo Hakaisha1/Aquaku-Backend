@@ -1,0 +1,24 @@
+name: aquaku-backend
+
+# Development only: these credentials are public fixtures, not production secrets.
+services:
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: aquaku
+      POSTGRES_PASSWORD: aquaku_dev_password
+      POSTGRES_DB: aquaku
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aquaku -d aquaku"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  postgres_data:

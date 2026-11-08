@@ -46,7 +46,7 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 - [x] Tentukan versi toolchain yang kompatibel dan satu dependency manager; simpan lockfile.
 - [x] Scaffold NestJS + TypeScript tanpa menimpa dokumen atau pekerjaan yang sudah ada.
 - [x] Siapkan perintah build, lint, unit test, dan e2e test.
-- [ ] Siapkan Docker Compose PostgreSQL, volume data, dan health check database.
+- [x] Siapkan Docker Compose PostgreSQL, volume data, dan health check database.
 - [ ] Integrasikan Prisma dan mekanisme migrasi yang dapat dijalankan ulang dari database kosong.
 - [ ] Validasi environment saat startup; sesuaikan `.env.example` tanpa secret asli.
 - [ ] Terapkan prefix `/api/v1`, validasi request, dan format error konsisten.
@@ -225,6 +225,8 @@ Dokumen ini **bukan izin otomatis untuk commit, membuat branch, atau push**. Jan
 | Checkpoint | Hasil dan validasi | Commit |
 | --- | --- | --- |
 | M1.1 — Scaffold | Node 24.22.2, npm 11, NestJS 11, TypeScript, lockfile, build/lint lulus, 1 unit test dan 1 e2e test lulus. Audit production: 0; audit keseluruhan: 30 temuan tooling development (2 low, 28 moderate), perlu ditinjau. | `Initialize NestJS application` |
+
+| M1.2 — Docker PostgreSQL | Compose valid; Docker Desktop aktif; PostgreSQL 17.11 healthy; koneksi psql dan query database berhasil. Named volume dan port loopback didokumentasikan. | `Add Docker PostgreSQL development setup` |
 
 Validasi memakai executable Node 24 melalui npm exec karena Node global komputer masih v25. Docker Desktop berhasil dijalankan; pemeriksaan database ada di checkpoint berikutnya. `.env.example` tetap tidak dibaca/diubah karena pengaturan `private_files`.
 
