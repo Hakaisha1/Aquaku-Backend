@@ -47,11 +47,11 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 - [x] Scaffold NestJS + TypeScript tanpa menimpa dokumen atau pekerjaan yang sudah ada.
 - [x] Siapkan perintah build, lint, unit test, dan e2e test.
 - [x] Siapkan Docker Compose PostgreSQL, volume data, dan health check database.
-- [ ] Integrasikan Prisma dan mekanisme migrasi yang dapat dijalankan ulang dari database kosong.
+- [x] Integrasikan Prisma dan mekanisme migrasi yang dapat dijalankan ulang dari database kosong.
 - [x] Validasi environment saat startup.
 - [ ] Sesuaikan `.env.example` tanpa secret asli; terblokir pengaturan `private_files` editor, kontrak sementara tersedia di README.
 - [x] Terapkan prefix `/api/v1`, validasi request, dan format error konsisten.
-- [ ] Tambahkan health/readiness check yang membedakan aplikasi hidup dari database siap.
+- [x] Tambahkan health/readiness check yang membedakan aplikasi hidup dari database siap.
 - [ ] Dokumentasikan setup dari clone baru dan jalankan pengujian fondasi.
 
 **Selesai jika:** aplikasi dapat dibangun dan dijalankan mengikuti README; konfigurasi tidak valid ditolak; readiness mendeteksi kegagalan database; pengujian terkait lulus. MongoDB, Cloudinary, OTP nyata, dan Midtrans tidak menjadi dependensi tahap ini.
@@ -234,6 +234,8 @@ Dokumen ini **bukan izin otomatis untuk commit, membuat branch, atau push**. Jan
 | M1.2a — Port database host | Pengujian host menemukan autentikasi berbeda di port 5432; mapping dipindah ke loopback 5433. Compose melaporkan `127.0.0.1:5433`; koneksi host melalui Prisma berhasil. Port internal dan volume tetap sama. | `Isolate the development PostgreSQL host port` |
 
 | M1.3a — Error middleware HTTP | Review menemukan payload/encoding gagal diklasifikasikan 500. Kini body-parser mempertahankan 413/415 tanpa membuka detail exception; scoped lint dan 60 e2e test HTTP lulus. | `Preserve HTTP middleware error statuses` |
+
+| M1.4 — Prisma dan readiness | Prisma 7.10.1; generate/skema/build/lint lulus; baseline diterapkan ke database kosong dan deploy kedua tanpa pending migration. 89 unit, 63 e2e, serta 6 integration test lulus, termasuk startup hasil build, konfigurasi invalid, query nyata, dan readiness gagal saat DB tidak terjangkau. | `Integrate Prisma and database readiness` |
 
 Validasi memakai executable Node 24 melalui npm exec karena Node global komputer masih v25. Docker Desktop berhasil dijalankan; pemeriksaan database ada di checkpoint berikutnya. `.env.example` tetap tidak dibaca/diubah karena pengaturan `private_files`.
 

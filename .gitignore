@@ -17,6 +17,7 @@ coverage/
 # Dependency dan cache Node.js
 node_modules/
 *.tsbuildinfo
+src/generated/
 
 # Hasil build dan file sementara
 dist/

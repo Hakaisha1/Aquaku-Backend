@@ -4,7 +4,7 @@ Backend untuk forum komunitas dan marketplace hobiis aquascape. Cakupan awal dib
 
 ## Status dan acuan
 
-**M1 — Fondasi NestJS dan PostgreSQL sedang dikerjakan.** Scaffold NestJS beserta build, lint, unit test, dan e2e test sudah tersedia. Autentikasi dan fitur bisnis belum diimplementasikan.
+**M1 — Fondasi NestJS dan PostgreSQL:** konfigurasi tervalidasi, validasi HTTP, Prisma/migrasi, serta health/readiness sudah diimplementasikan dan diuji. Penyesuaian `.env.example` masih terblokir pengaturan privasi editor, sehingga M1 belum ditutup. Autentikasi dan fitur bisnis belum diimplementasikan.
 
 - [`revision.md`](revision.md): keputusan sistem terbaru dan detail yang belum diputuskan.
 - [`timeline.md`](timeline.md): milestone, checklist progres, kriteria selesai, dan aturan commit atomik.
@@ -60,17 +60,22 @@ Nilai tersebut menjadi baseline implementasi MVP, tetapi tetap perlu validasi bi
 
 Backend memvalidasi autentikasi, verifikasi HP, wilayah, izin tag, foto, cooldown, dan kuota. Second/Like New memerlukan minimal tiga foto. Detail lifecycle yang belum final tercatat dalam `revision.md` dan gerbang keputusan `timeline.md`.
 
-## Menjalankan scaffold
+## Menjalankan fondasi dari clone baru
 
-Gunakan **Node.js 24 LTS** (versi acuan `.nvmrc`: 24.22.2) dan **npm 11**. Dependency dikunci dalam `package-lock.json`. NestJS 11 dipakai agar toolchain CommonJS dan Jest tetap kompatibel.
+Gunakan **Node.js 24 LTS** (versi acuan `.nvmrc`: 24.22.2), **npm 11**, dan Docker Desktop dengan Linux containers. Dependency dikunci dalam `package-lock.json`. NestJS 11 dipakai agar toolchain CommonJS dan Jest tetap kompatibel.
+
+1. Jalankan `npm ci`.
+2. Jalankan `docker compose up -d --wait postgres`.
+3. Siapkan environment proses atau file `.env` sesuai tabel konfigurasi di bawah. Gunakan port host database **5433**; jangan mengandalkan nilai template env lama.
+4. Terapkan migrasi, build, lalu jalankan aplikasi:
 
 ```sh
-npm ci
+npm run db:deploy
 npm run build
 npm start
 ```
 
-Untuk development gunakan `npm run start:dev`. Sebelum menjalankan aplikasi, siapkan `DATABASE_URL` sesuai bagian konfigurasi. Port default adalah 3000; endpoint bisnis belum tersedia.
+Build otomatis menghasilkan Prisma Client; kode hasil generate tidak disimpan di Git. Untuk development gunakan `npm run start:dev`, yang juga menghasilkan client terlebih dahulu. Port HTTP default adalah 3000; endpoint bisnis belum tersedia.
 
 ```sh
 npm run lint
@@ -78,6 +83,8 @@ npm test
 npm run test:e2e
 npm run test:cov
 ```
+
+Unit/e2e test tidak memerlukan Docker/database aktif. Integration test terpisah memerlukan database test nyata; lihat bagian Prisma di bawah. Integration test juga menjalankan server hasil build dalam subprocess dengan waktu tunggu terbatas, lalu menghentikannya setelah pengujian.
 
 Override `multer` 2.5.0 menutup advisory DoS GHSA-q7qp-rjg7-q26m pada dependency transitif NestJS 11. Jangan menjalankan `npm audit fix --force` tanpa meninjau perubahan major. Temuan audit tooling development dicatat di timeline dan perlu ditinjau sebelum CI/rilis.
 
@@ -104,6 +111,45 @@ docker compose down
 
 `down` mempertahankan named volume. **`docker compose down -v` menghapus data database development**; jangan gunakan tanpa sengaja. Image dikunci ke major PostgreSQL 17; patch dapat berubah saat image ditarik ulang, bukan jaminan digest identik.
 
+## Prisma dan migrasi
+
+Prisma 7 menggunakan adapter PostgreSQL `pg` dan konfigurasi CLI `prisma.config.ts`. Generate/validasi skema tidak memerlukan koneksi database; perintah migrasi memerlukan `DATABASE_URL`.
+
+```sh
+npm run db:generate
+npm run db:validate
+npm run db:deploy
+npm run db:status
+```
+
+`db:deploy` menerapkan migrasi yang sudah di-commit dan aman diulang. `db:migrate -- --name <nama_perubahan>` hanya untuk membuat migrasi baru dalam development; jangan gunakan reset/migrate-dev pada database production. Baseline M1 hanya menyiapkan namespace `public` dan riwayat migrasi, tanpa tabel domain/dummy. Model akun dibuat bersama fitur M2.
+
+### Integration test PostgreSQL
+
+Buat database test terpisah sekali saja pada volume development baru:
+
+```sh
+docker compose exec -T postgres psql -U aquaku -d postgres -c "CREATE DATABASE aquaku_test;"
+```
+
+Jika database tersebut sudah ada, tidak perlu menjalankan perintah pembuatan lagi. Terapkan migrasi pada `aquaku_test`, bukan menghapus atau mereset database utama. Contoh untuk shell POSIX/Git Bash:
+
+```sh
+DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku_test npm run db:deploy
+TEST_DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku_test npm run test:integration
+```
+
+Pada PowerShell/CMD, set environment menggunakan sintaks shell tersebut sebelum menjalankan perintah npm. Test mewajibkan nama database berakhiran `_test`; tidak ada drop/reset otomatis. URL test tidak boleh menunjuk database production meskipun namanya berakhiran `_test`.
+
+### Health endpoints
+
+| Endpoint | Perilaku |
+| --- | --- |
+| `GET /api/v1/health/live` | `200`, `{ "data": { "status": "ok" } }`; tidak mengakses database |
+| `GET /api/v1/health/ready` | `200` jika query PostgreSQL berhasil; `503` dengan error tersanitasi jika gagal |
+
+Koneksi Prisma lazy agar aplikasi tetap dapat memberikan liveness saat database mati. Pool dan waktu tunggu koneksi/query dibatasi; shutdown aplikasi menutup client. URL readiness tidak mengungkap host, kredensial, atau pesan error database. Jika `API_PREFIX` diubah, prefix health ikut berubah.
+
 ## Konfigurasi dan keamanan development
 
 Aplikasi memuat `.env` saat startup tanpa menimpa environment proses yang sudah tersedia, lalu memvalidasi konfigurasi sebelum inisialisasi NestJS. Unit/e2e test tidak memuat `.env` lokal.
@@ -127,7 +173,7 @@ DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku
 
 `.env.example` awal belum diselaraskan karena dilindungi pengaturan `private_files` editor. Jangan menganggap semua variabel dalam template awal sudah dibutuhkan: JWT dan MongoDB belum digunakan pada M1. Ikuti tabel ini sampai template dapat diperbarui dengan akses yang diizinkan.
 
-Request menggunakan whitelist DTO dan menolak field asing. Error HTTP memakai bentuk `{ "error": { "code": "...", "message": "..." } }`; detail exception internal tidak dikirim ke klien. Prefix, validasi, filter error, dan CORS diterapkan melalui konfigurasi aplikasi yang juga dipakai e2e test.
+Request menggunakan whitelist DTO dan menolak field asing. Payload JSON terlalu besar ditolak dengan `413`, encoding yang tidak didukung dengan `415`. Error HTTP memakai bentuk `{ "error": { "code": "...", "message": "..." } }`; detail exception internal tidak dikirim ke klien. Prefix, validasi, filter error, dan CORS diterapkan melalui konfigurasi aplikasi yang juga dipakai e2e test.
 
 - Jangan commit `.env`, secret asli, token, atau data pribadi.
 - Mode OTP prototipe memakai pengirim lokal tanpa biaya SMS/WhatsApp, lengkap dengan masa berlaku dan pembatasan percobaan.
