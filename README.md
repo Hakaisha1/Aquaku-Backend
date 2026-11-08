@@ -1,70 +1,86 @@
 # Aquaku Backend
 
-Backend untuk platform forum komunitas dan marketplace hobiis aquascape, dengan fokus awal di Semarang. Proyek ini menggabungkan diskusi, berbagi tank, dan jual-beli produk aquascape tanpa komisi transaksi.
+Backend untuk forum komunitas dan marketplace hobiis aquascape. Cakupan awal dibatasi oleh sistem untuk **Kota Semarang**, bukan Kabupaten Semarang. Pengguna dapat berdiskusi dan mencari barang dalam satu platform tanpa komisi transaksi barang.
 
-## Status
+## Status dan acuan
 
-Repositori masih pada tahap inisialisasi. Belum ada implementasi API, framework, dependensi, migrasi database, atau perintah menjalankan aplikasi. Isi berikut merupakan rencana berdasarkan dokumen konsep dan kontrak OpenAPI 3.0.3 versi 0.1.0.
+Repositori berada pada checkpoint **M0 — Inisialisasi dan acuan proyek**. Belum ada kode aplikasi, dependensi, migrasi, atau perintah menjalankan backend. Scaffold aplikasi baru dikerjakan pada M1.
+
+- [`revision.md`](revision.md): keputusan sistem terbaru dan detail yang belum diputuskan.
+- [`timeline.md`](timeline.md): milestone, checklist progres, kriteria selesai, dan aturan commit atomik.
+
+Jika ada perbedaan dengan konsep atau draft OpenAPI lama, ikuti `revision.md`. Daftar fitur di bawah adalah rencana, bukan fitur yang sudah berjalan.
+
+## Stack yang disepakati
+
+| Komponen | Pilihan dan peran |
+| --- | --- |
+| Bahasa dan framework | TypeScript + NestJS, satu layanan backend modular |
+| PostgreSQL + Prisma | Akun, membership, toko, listing, kuota, cooldown, add-on, rating, dan laporan |
+| Docker | Lingkungan development, dimulai dengan PostgreSQL |
+| MongoDB + Mongoose | Forum dan data fleksibel, ditambahkan setelah prioritas marketplace |
+| Cloudinary | Media; database menyimpan URL dan metadata yang diperlukan |
+| REST + JSON | Prefix `/api/v1` |
+| JWT Bearer | Autentikasi; hak akses diperiksa oleh backend |
+
+PostgreSQL menjadi sumber kebenaran identitas dan tier. MongoDB, Cloudinary, serta pengiriman OTP nyata tidak menjadi prasyarat M1. Base URL lokal yang direncanakan adalah `http://localhost:3000/api/v1`.
 
 ## Cakupan MVP
 
-- Registrasi, login, refresh token, verifikasi nomor HP, dan profil pengguna.
-- Membership penjual Personal, Toko, dan Juragan.
-- Listing dengan tag kondisi, foto, filter, kuota, masa tayang, dan cooldown.
-- Pengajuan upgrade membership dan pembelian slot tambahan; aktivasi manual oleh admin.
-- Forum dengan posting, kategori, foto, dan komentar.
-- Rating penjual, laporan pengguna, dan moderasi admin.
-- Upload foto langsung ke object storage melalui URL sementara.
-- Satu fitur unggulan yang dipilih setelah validasi; kontrak API memuat contoh tank profile.
+- Registrasi/login dengan email dan password, refresh token, serta profil pengguna.
+- Satu nomor HP per akun dan maksimal satu toko per akun.
+- Verifikasi HP wajib untuk memasang listing, posting, dan komentar; membaca konten publik tidak memerlukan verifikasi.
+- Listing dengan tag kondisi, foto, pencarian, filter, kuota, masa tayang, dan cooldown.
+- Membership Personal, Toko, dan Juragan; upgrade/add-on melalui transfer dan persetujuan admin.
+- Forum dengan kategori, foto, posting, dan komentar pada tahap berikutnya.
+- Konfirmasi transaksi oleh pembeli sebelum pemberian rating; laporan dan moderasi admin.
+- Upload media melalui Cloudinary, dengan mekanisme upload ditentukan saat integrasi.
 
-Transaksi MVP diarahkan melalui chat WhatsApp dan COD/meetup, tanpa payment gateway atau escrow.
+Transaksi barang diarahkan melalui WhatsApp untuk COD/meetup atau pengiriman lokal. Belum ada checkout, escrow, atau payment gateway transaksi barang. Midtrans untuk pembayaran platform dan OAuth ditunda. Tank profile hanya kandidat fitur unggulan, bukan kewajiban fondasi.
 
-## Rencana arsitektur
+## Aturan marketplace utama
 
-| Komponen | Tanggung jawab |
-| --- | --- |
-| REST API + JSON | Satu layanan backend dengan prefix `/api/v1` |
-| JWT Bearer | Autentikasi; tier dan hak akses diverifikasi oleh backend |
-| PostgreSQL | Akun, membership, listing, tag, kuota, cooldown, add-on, rating, laporan, dan verifikasi toko |
-| MongoDB | Posting forum, komentar, tank profile, serta data fleksibel lainnya |
-| Object storage | Foto/video; database hanya menyimpan URL |
-| Job terjadwal | Kedaluwarsa listing dan pengingat masa tayang |
-
-PostgreSQL menjadi sumber kebenaran untuk identitas dan tier. Dokumen MongoDB merujuk ID dari PostgreSQL. Framework, provider storage, dan provider OTP belum ditentukan. Redis bersifat opsional dan bukan kebutuhan awal.
-
-Base URL lokal yang direncanakan: `http://localhost:3000/api/v1`.
-
-## Aturan bisnis awal
-
-| Tier | Listing aktif | Masa tayang | Cooldown | Barang BNIB/New |
+| Tier | Harga per 30 hari | Kuota dasar aktif | Masa tayang | BNIB/New |
 | --- | --- | --- | --- | --- |
-| Personal | 5 | 30 hari | 7 hari setelah kuota penuh, dihitung dari listing terjual/kedaluwarsa | Tidak |
-| Toko | 30 | 60 hari | Tidak ada | Ya |
-| Juragan | 100 | 90 hari atau tanpa batas, belum diputuskan | Tidak ada | Ya |
+| Personal | Gratis | 5 | 30 hari | Tidak |
+| Toko | Rp40.000 | 30 | 60 hari | Ya |
+| Juragan | Rp100.000 | 100 | 90 hari | Ya |
 
-Nilai tersebut masih berupa asumsi dan perlu divalidasi. Slot add-on dapat menambah kuota. Backend wajib memvalidasi autentikasi dan verifikasi HP, izin tag per tier, jumlah foto, cooldown, serta kuota sebelum menyimpan listing. Kondisi Second/Like New memerlukan minimal tiga foto sesuai aturan konsep.
+Nilai tersebut menjadi baseline implementasi MVP, tetapi tetap perlu validasi bisnis. Periode berbayar dimulai sejak persetujuan admin, bukan awal bulan kalender.
 
-## Persiapan konfigurasi
+### Kuota dan cooldown
 
-1. Salin `.env.example` menjadi `.env`.
-2. Sesuaikan URL PostgreSQL dan MongoDB dengan lingkungan pengembangan.
-3. Isi secret access token dan refresh token dengan nilai acak yang berbeda.
-4. Isi origin frontend saat tersedia. Konfigurasi provider storage dan OTP ditambahkan setelah provider dipilih.
+- Kuota penuh saja belum memulai cooldown.
+- Untuk Personal, listing terjual/kedaluwarsa saat kuota sebelumnya penuh memulai cooldown akun **7 hari**. Penjualan/kedaluwarsa berikutnya selama cooldown tidak mengulang hitungan.
+- Penghapusan listing aktif memicu **2 hari**, meskipun kuota belum penuh. Waktu selesai cooldown tidak boleh lebih awal dari cooldown yang masih berlaku.
+- Cooldown melarang pemasangan dan pengaktifan ulang listing, tetapi tidak menyembunyikan listing lain yang masih aktif.
+- Toko/Juragan aktif tidak terkena cooldown Personal.
+- Add-on kapasitas berlaku **30 hari sejak persetujuan admin**, dapat dipakai ulang selama berlaku, dan tidak menghapus cooldown. Add-on lewati cooldown terpisah dan tidak menambah kapasitas.
+- Saat hak membership/add-on habis, listing yang tidak lagi memenuhi hak akun dinonaktifkan, bukan dihapus permanen.
 
-`.env.example` adalah rancangan konfigurasi, bukan konfigurasi aplikasi yang sudah berjalan. Jangan menyimpan kredensial asli di Git. `.env` dan variasi file environment lokal diabaikan, sedangkan `.env.example` tetap dilacak.
+Backend memvalidasi autentikasi, verifikasi HP, wilayah, izin tag, foto, cooldown, dan kuota. Second/Like New memerlukan minimal tiga foto. Detail lifecycle yang belum final tercatat dalam `revision.md` dan gerbang keputusan `timeline.md`.
+
+## Konfigurasi dan keamanan development
+
+`.env.example` adalah template awal, belum kontrak konfigurasi aplikasi yang sudah berjalan. Nama variabel dan kebutuhan layanan akan diselaraskan pada M1. Belum ada kewajiban menjalankan MongoDB pada tahap fondasi PostgreSQL.
+
+- Jangan commit `.env`, secret asli, token, atau data pribadi.
+- Mode OTP prototipe memakai pengirim lokal tanpa biaya SMS/WhatsApp, lengkap dengan masa berlaku dan pembatasan percobaan.
+- OTP lokal hanya menguji alur, bukan membuktikan kepemilikan nomor HP, dan tidak boleh aktif di production.
+- Provider OTP nyata harus dipilih sebelum verifikasi dipakai oleh pengguna nyata.
 
 ## Isi repositori
 
-- `.gitignore`: aturan pengecualian file lokal, rahasia, log, dan hasil build.
-- `.env.example`: template konfigurasi awal tanpa secret asli.
-- `README.md`: ringkasan proyek dan arah implementasi.
+- `.gitignore`: pengecualian file referensi lokal, rahasia, log, dan hasil build.
+- `.env.example`: template konfigurasi awal tanpa secret asli pada commit inisialisasi.
+- `README.md`: ringkasan proyek dan navigasi dokumentasi.
+- `revision.md`: acuan sistem terbaru.
+- `timeline.md`: rencana delivery dan pencatatan progres.
 
-Dokumen referensi lokal `konsep-forum-ecommerce-aquascape (2).md` dan `openapi-aquascape.yaml` sengaja diabaikan oleh Git dan tidak disertakan dalam clone repositori.
+Dokumen lokal `konsep-forum-ecommerce-aquascape (2).md` dan `openapi-aquascape.yaml` tetap diabaikan Git dan tidak tersedia dalam clone. Kontrak API yang boleh dipublikasikan disiapkan saat implementasi berkembang; clone tidak boleh bergantung pada dua file lokal tersebut untuk setup.
 
-## Langkah berikutnya
+## Aturan pengerjaan
 
-1. Tentukan bahasa, framework backend, dan dependency manager.
-2. Rancang skema PostgreSQL dan dokumen MongoDB.
-3. Implementasikan autentikasi, validasi konfigurasi, dan verifikasi nomor HP.
-4. Implementasikan forum, listing, serta aturan tier dan kuota.
-5. Tambahkan pengujian, dokumentasi API yang akan dipublikasikan, dan alur deployment.
+Satu commit menyelesaikan satu tujuan logis beserta test, migrasi, dan dokumentasi yang diperlukan. Jangan mencampur fitur berbeda atau memasukkan secret. Tinjau staged diff dan jalankan validasi terkait sebelum commit; jangan mengklaim test lulus jika belum dijalankan.
+
+Urutan berikutnya adalah **M1 — Fondasi NestJS dan PostgreSQL** sesuai `timeline.md`. Tidak ada scaffold, instalasi dependency, atau integrasi layanan pada checkpoint M0 ini.
