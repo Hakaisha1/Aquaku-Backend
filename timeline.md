@@ -233,6 +233,8 @@ Dokumen ini **bukan izin otomatis untuk commit, membuat branch, atau push**. Jan
 
 | M1.2a — Port database host | Pengujian host menemukan autentikasi berbeda di port 5432; mapping dipindah ke loopback 5433. Compose melaporkan `127.0.0.1:5433`; koneksi host melalui Prisma berhasil. Port internal dan volume tetap sama. | `Isolate the development PostgreSQL host port` |
 
+| M1.3a — Error middleware HTTP | Review menemukan payload/encoding gagal diklasifikasikan 500. Kini body-parser mempertahankan 413/415 tanpa membuka detail exception; scoped lint dan 60 e2e test HTTP lulus. | `Preserve HTTP middleware error statuses` |
+
 Validasi memakai executable Node 24 melalui npm exec karena Node global komputer masih v25. Docker Desktop berhasil dijalankan; pemeriksaan database ada di checkpoint berikutnya. `.env.example` tetap tidak dibaca/diubah karena pengaturan `private_files`.
 
 Tanggal historis tidak diisi dengan perkiraan. Tambahkan tanggal aktual pada pembaruan progres berikutnya.

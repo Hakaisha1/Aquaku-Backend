@@ -89,6 +89,20 @@ describe.each([
       .expect({ error: { code: 'VALIDATION_ERROR', message: 'Request validation failed' } });
   });
 
+  it('keeps oversized JSON a sanitized client error', async () => {
+    await request(app.getHttpServer()).post('/api/v1/http-test/items')
+      .send({ name: 'x'.repeat(110000), quantity: 1 }).expect(413)
+      .expect({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body is too large' } });
+  });
+
+  it('keeps unsupported content encoding a sanitized client error', async () => {
+    await request(app.getHttpServer()).post('/api/v1/http-test/items')
+      .set('Content-Encoding', 'unsupported').send({ name: 'Aquarium', quantity: 1 })
+      .expect(415).expect({
+        error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'Request media type is not supported' },
+      });
+  });
+
   it.each(['/unimplemented', '/api/v1/unimplemented', '/http-test/items'])(
     'returns a consistent 404 for %s', async (path) => {
       await request(app.getHttpServer()).get(path).expect(404)
