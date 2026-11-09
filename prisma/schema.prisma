@@ -19,6 +19,19 @@ enum UserRole {
   ADMIN
 }
 
+enum ListingStatus {
+  ACTIVE
+  SOLD
+  EXPIRED
+}
+
+enum ListingCondition {
+  BNIB
+  NEW
+  LIKE_NEW
+  SECOND
+}
+
 model User {
   id              String         @id @default(uuid()) @db.Uuid
   email           String         @unique @db.VarChar(320)
@@ -37,6 +50,10 @@ model User {
   updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
   otpChallenge    OtpChallenge?
   refreshTokens   RefreshToken[]
+  shop            Shop?
+  listings        Listing[]
+  mediaAssets     MediaAsset[]
+  personalCooldownUntil DateTime? @map("personal_cooldown_until") @db.Timestamptz(3)
 
   @@map("users")
 }
@@ -65,4 +82,109 @@ model RefreshToken {
 
   @@index([userId, expiresAt])
   @@map("refresh_tokens")
+}
+
+model Region {
+  code          String    @id @db.VarChar(32)
+  districtCode  String    @map("district_code") @db.VarChar(16)
+  districtName  String    @map("district_name") @db.VarChar(100)
+  villageName   String    @map("village_name") @db.VarChar(100)
+  listings      Listing[]
+
+  @@index([districtCode, villageName])
+  @@map("regions")
+}
+
+model Category {
+  id        String    @id @default(uuid()) @db.Uuid
+  slug      String    @unique @db.VarChar(64)
+  name      String    @db.VarChar(80)
+  active    Boolean   @default(true)
+  listings  Listing[]
+
+  @@map("categories")
+}
+
+model ListingTag {
+  id          String    @id @default(uuid()) @db.Uuid
+  slug        String    @unique @db.VarChar(64)
+  name        String    @db.VarChar(80)
+  minimumTier Tier      @default(PERSONAL) @map("minimum_tier")
+  assignments ListingTagAssignment[]
+
+  @@map("listing_tags")
+}
+
+model ListingTagAssignment {
+  listingId String     @map("listing_id") @db.Uuid
+  tagId     String     @map("tag_id") @db.Uuid
+  listing   Listing    @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  tag       ListingTag @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  @@id([listingId, tagId])
+  @@index([tagId, listingId])
+  @@map("listing_tag_assignments")
+}
+
+model Shop {
+  id          String    @id @default(uuid()) @db.Uuid
+  ownerId     String    @unique @map("owner_id") @db.Uuid
+  name        String    @db.VarChar(100)
+  description String?   @db.VarChar(500)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  listings    Listing[]
+
+  @@map("shops")
+}
+
+model Listing {
+  id          String                   @id @default(uuid()) @db.Uuid
+  sellerId    String                   @map("seller_id") @db.Uuid
+  shopId      String?                  @map("shop_id") @db.Uuid
+  categoryId  String                   @map("category_id") @db.Uuid
+  regionCode  String                   @map("region_code") @db.VarChar(32)
+  title       String                   @db.VarChar(120)
+  description String                   @db.VarChar(5000)
+  price       Int
+  condition   ListingCondition
+  status      ListingStatus            @default(ACTIVE)
+  expiresAt   DateTime                 @map("expires_at") @db.Timestamptz(3)
+  soldAt      DateTime?                @map("sold_at") @db.Timestamptz(3)
+  deletedAt   DateTime?                @map("deleted_at") @db.Timestamptz(3)
+  createdAt   DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  seller      User                     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  shop        Shop?                    @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  category    Category                 @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  region      Region                   @relation(fields: [regionCode], references: [code], onDelete: Restrict)
+  photos      MediaAsset[]
+  tags        ListingTagAssignment[]
+
+  @@index([status, deletedAt, expiresAt])
+  @@index([sellerId, status, deletedAt])
+  @@index([categoryId, status, deletedAt])
+  @@index([regionCode, status, deletedAt])
+  @@index([price, status, deletedAt])
+  @@map("listings")
+}
+
+model MediaAsset {
+  id         String    @id @default(uuid()) @db.Uuid
+  ownerId    String    @map("owner_id") @db.Uuid
+  listingId  String?   @map("listing_id") @db.Uuid
+  publicId   String    @unique @map("public_id") @db.VarChar(255)
+  secureUrl  String?   @map("secure_url") @db.VarChar(2048)
+  format     String?   @db.VarChar(8)
+  bytes      Int?
+  signedAt   DateTime  @map("signed_at") @db.Timestamptz(3)
+  uploadedAt DateTime? @map("uploaded_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  owner      User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  listing    Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, listingId])
+  @@index([signedAt])
+  @@map("media_assets")
 }

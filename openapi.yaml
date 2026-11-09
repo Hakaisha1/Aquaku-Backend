@@ -1,0 +1,425 @@
+openapi: 3.1.0
+info:
+  title: Aquaku Backend API
+  version: 0.3.0
+  description: REST API akun dan marketplace Aquaku. Tier berbayar belum dapat dibeli sebelum M4.
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Development
+security:
+  - bearerAuth: []
+paths:
+  /marketplace/regions:
+    get:
+      security: []
+      summary: Daftar kelurahan Kota Semarang
+      responses:
+        '200':
+          description: Daftar wilayah yang dapat dipakai pada listing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Region' }
+                required: [data]
+  /marketplace/taxonomy:
+    get:
+      security: []
+      summary: Daftar kategori dan tag kondisi
+      responses:
+        '200':
+          description: Taksonomi listing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      categories:
+                        type: array
+                        items: { $ref: '#/components/schemas/Category' }
+                      tags:
+                        type: array
+                        items: { $ref: '#/components/schemas/Tag' }
+                    required: [categories, tags]
+                required: [data]
+  /marketplace/listings:
+    get:
+      security: []
+      summary: Cari listing aktif
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: category, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: condition, in: query, schema: { $ref: '#/components/schemas/Condition' } }
+        - { name: min_price, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: max_price, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: region_code, in: query, schema: { type: string, maxLength: 32 } }
+        - { name: district_code, in: query, schema: { type: string, maxLength: 16 } }
+        - { name: sort, in: query, schema: { type: string, enum: [newest, price_asc, price_desc], default: newest } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: Hasil pencarian
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListingPage' }
+    post:
+      summary: Buat listing aktif
+      description: Memerlukan access token, HP terverifikasi, slot kuota, dan foto terverifikasi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateListing' }
+      responses:
+        '201': { description: Listing dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/ListingResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /marketplace/listings/{listingId}:
+    parameters:
+      - { $ref: '#/components/parameters/ListingId' }
+    get:
+      security: []
+      summary: Detail listing aktif
+      responses:
+        '200': { description: Detail listing, content: { application/json: { schema: { $ref: '#/components/schemas/ListingResponse' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      summary: Ubah listing aktif milik sendiri
+      description: photo_ids tidak melepas foto yang sudah terpasang. Hapus foto lama melalui DELETE /marketplace/media/{assetId} agar file Cloudinary ikut dihapus.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateListing' }
+      responses:
+        '200': { description: Listing diperbarui, content: { application/json: { schema: { $ref: '#/components/schemas/ListingResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      summary: Soft delete listing aktif milik sendiri
+      responses:
+        '200': { description: Listing diarsipkan }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /marketplace/listings/{listingId}/sold:
+    parameters:
+      - { $ref: '#/components/parameters/ListingId' }
+    post:
+      summary: Tandai listing terjual
+      responses:
+        '201': { description: Listing ditandai terjual }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /marketplace/listings/{listingId}/renew:
+    parameters:
+      - { $ref: '#/components/parameters/ListingId' }
+    post:
+      summary: Perpanjang listing Expired milik sendiri
+      responses:
+        '201': { description: Listing diaktifkan kembali, content: { application/json: { schema: { $ref: '#/components/schemas/ListingResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /marketplace/me/listings:
+    get:
+      summary: Daftar listing milik sendiri
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200': { description: Listing milik sendiri termasuk status Sold dan Expired, content: { application/json: { schema: { $ref: '#/components/schemas/ListingPage' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /marketplace/me/quota:
+    get:
+      summary: Informasi kuota dan cooldown akun
+      responses:
+        '200':
+          description: Status kuota
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Quota' }
+                required: [data]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /marketplace/shops:
+    post:
+      summary: Buat toko untuk akun tier berbayar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 2, maxLength: 100 }
+                description: { type: [string, 'null'], maxLength: 500 }
+              required: [name]
+      responses:
+        '201': { description: Toko dibuat }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /marketplace/shops/me:
+    get:
+      summary: Toko milik sendiri
+      responses:
+        '200': { description: Toko, content: { application/json: { schema: { $ref: '#/components/schemas/ShopResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /marketplace/media/upload-signatures:
+    post:
+      summary: Minta signed upload Cloudinary
+      description: Klien mengunggah langsung ke Cloudinary dengan parameter yang dikembalikan, lalu memanggil confirm-upload. Preset harus membatasi foto ke JPEG/PNG/WebP maksimal 5 MB.
+      responses:
+        '201':
+          description: Parameter signed upload dan ID aset lokal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      asset_id: { type: string, format: uuid }
+                      cloud_name: { type: string }
+                      api_key: { type: string }
+                      timestamp: { type: integer }
+                      public_id: { type: string }
+                      folder: { type: string }
+                      allowed_formats: { type: string, const: 'jpg,png,webp' }
+                      upload_preset: { type: string }
+                      overwrite: { type: string, const: 'false' }
+                      signature: { type: string }
+                    required: [asset_id, cloud_name, api_key, timestamp, public_id, folder, allowed_formats, upload_preset, overwrite, signature]
+                required: [data]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /marketplace/media/confirm-upload:
+    post:
+      summary: Verifikasi upload Cloudinary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                asset_id: { type: string, format: uuid }
+              required: [asset_id]
+      responses:
+        '201': { description: Aset terverifikasi }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /marketplace/media/{assetId}:
+    delete:
+      summary: Hapus aset media milik sendiri
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Aset dihapus dari Cloudinary dan database }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ListingId:
+      name: listingId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    Condition:
+      type: string
+      enum: [BNIB, NEW, LIKE_NEW, SECOND]
+    Category:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+      required: [id, slug, name]
+    Tag:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        minimum_tier: { type: string, enum: [personal, toko, juragan] }
+      required: [id, slug, name, minimum_tier]
+    Region:
+      type: object
+      properties:
+        code: { type: string, example: '33.74.11.1005' }
+        district_code: { type: string, example: '33.74.11' }
+        district: { type: string }
+        kelurahan: { type: string }
+      required: [code, district_code, district, kelurahan]
+    Listing:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        price: { type: integer, minimum: 1 }
+        condition: { $ref: '#/components/schemas/Condition' }
+        status: { type: string, enum: [active, sold, expired] }
+        category: { $ref: '#/components/schemas/Category' }
+        location: { $ref: '#/components/schemas/Region' }
+        photos:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              url: { type: [string, 'null'], format: uri }
+            required: [id, url]
+        seller:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            display_name: { type: string }
+            avatar_url: { type: [string, 'null'], format: uri }
+            tier: { type: string, enum: [personal, toko, juragan] }
+            verified_store: { type: boolean }
+            shop: { type: [object, 'null'] }
+            whatsapp_url: { type: [string, 'null'], format: uri }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, title, description, price, condition, status, category, location, photos, seller, expires_at, created_at, updated_at]
+    CreateListing:
+      type: object
+      properties:
+        category_id: { type: string, format: uuid }
+        region_code: { type: string, maxLength: 32 }
+        shop_id: { type: string, format: uuid }
+        title: { type: string, minLength: 5, maxLength: 120 }
+        description: { type: string, minLength: 10, maxLength: 5000 }
+        price: { type: integer, minimum: 1, maximum: 2147483647 }
+        condition: { $ref: '#/components/schemas/Condition' }
+        photo_ids:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items: { type: string, format: uuid }
+      required: [category_id, region_code, title, description, price, condition, photo_ids]
+    UpdateListing:
+      type: object
+      properties:
+        category_id: { type: string, format: uuid }
+        region_code: { type: string, maxLength: 32 }
+        title: { type: string, minLength: 5, maxLength: 120 }
+        description: { type: string, minLength: 10, maxLength: 5000 }
+        price: { type: integer, minimum: 1, maximum: 2147483647 }
+        condition: { $ref: '#/components/schemas/Condition' }
+        photo_ids:
+          type: array
+          description: Jika diberikan, sertakan foto yang sudah terpasang dan foto terverifikasi yang ingin ditambahkan. Hapus foto lama melalui endpoint DELETE media.
+          minItems: 1
+          maxItems: 8
+          items: { type: string, format: uuid }
+    ListingResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Listing' }
+      required: [data]
+    ListingPage:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Listing' }
+            pagination:
+              type: object
+              properties:
+                page: { type: integer }
+                limit: { type: integer }
+                total: { type: integer }
+                pages: { type: integer }
+              required: [page, limit, total, pages]
+          required: [items, pagination]
+      required: [data]
+    Quota:
+      type: object
+      properties:
+        tier: { type: string, enum: [personal, toko, juragan] }
+        active_listings: { type: integer }
+        base_quota: { type: integer }
+        addon_slots: { type: integer }
+        available_slots: { type: integer }
+        cooldown_until: { type: [string, 'null'], format: date-time }
+        may_list: { type: boolean }
+      required: [tier, active_listings, base_quota, addon_slots, available_slots, cooldown_until, may_list]
+    ShopResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            description: { type: [string, 'null'] }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+          required: [id, name, description, created_at, updated_at]
+      required: [data]
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+          required: [code, message]
+      required: [error]
+  responses:
+    BadRequest:
+      description: Request tidak valid
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unauthorized:
+      description: Autentikasi diperlukan
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Akses ditolak
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Resource tidak ditemukan
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Request bertentangan dengan kondisi saat ini
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unavailable:
+      description: Media provider tidak tersedia
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }

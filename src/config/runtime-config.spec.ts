@@ -107,6 +107,36 @@ describe('validateConfig', () => {
     expect(validateConfig({ ...base, CORS_ORIGIN }).corsOrigin).toBe(CORS_ORIGIN);
   });
 
+  it('accepts a complete Cloudinary configuration while keeping it optional', () => {
+    const config = validateConfig({
+      ...base,
+      CLOUDINARY_CLOUD_NAME: 'aquaku-cloud',
+      CLOUDINARY_API_KEY: '123456789012345',
+      CLOUDINARY_API_SECRET: 'secret-value-long-enough',
+      CLOUDINARY_UPLOAD_PRESET: 'aquaku_listing_images',
+    });
+    expect(config).toMatchObject({
+      cloudinaryCloudName: 'aquaku-cloud',
+      cloudinaryApiKey: '123456789012345',
+      cloudinaryApiSecret: 'secret-value-long-enough',
+      cloudinaryUploadPreset: 'aquaku_listing_images',
+    });
+  });
+
+  it('rejects partial or malformed Cloudinary configuration without exposing values', () => {
+    expect(() => validateConfig({
+      ...base,
+      CLOUDINARY_CLOUD_NAME: 'private-cloud',
+    })).toThrow('Invalid configuration fields: CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, CLOUDINARY_UPLOAD_PRESET');
+    expect(() => validateConfig({
+      ...base,
+      CLOUDINARY_CLOUD_NAME: 'bad cloud',
+      CLOUDINARY_API_KEY: '123',
+      CLOUDINARY_API_SECRET: 'private-secret',
+      CLOUDINARY_UPLOAD_PRESET: 'aquaku_listing_images',
+    })).toThrow('Invalid configuration fields: CLOUDINARY_CLOUD_NAME');
+  });
+
   it('requires distinct strong JWT secrets in production', () => {
     expect(() => validateConfig({ ...base, APP_ENV: 'production' }))
       .toThrow('Invalid configuration fields: JWT_ACCESS_SECRET, JWT_REFRESH_SECRET');

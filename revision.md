@@ -77,7 +77,10 @@ OTP development menguji alur aplikasi, **bukan membuktikan kepemilikan nomor HP 
 
 Kota Semarang menjadi batas sistem pada tahap awal, bukan hanya fokus pemasaran.
 
-Detail penerapan masih perlu ditetapkan sebelum modul alamat/listing dibuat: sumber daftar wilayah, data alamat yang wajib, dan cara memeriksa kelayakan pengguna/toko/listing. Jangan menganggap isian alamat atau lokasi IP sebagai bukti lokasi fisik pengguna.
+- Lokasi yang wajib divalidasi adalah lokasi pada setiap listing, dipilih dari kode kelurahan yang tercatat di backend. Daftar mencakup 16 kecamatan dan 177 kelurahan Kota Semarang.
+- Referensi nama wilayah: [Data Kelurahan Kota Semarang](https://datakelurahan.semarangkota.go.id/). Kode kelurahan pada snapshot awal mengikuti daftar Kemendagri No. 56 Tahun 2015; tinjau ulang terhadap dataset kode wilayah terbaru sebelum rilis pengguna nyata.
+- API menampilkan kecamatan dan kelurahan; alamat rinci tidak diwajibkan atau ditampilkan publik.
+- Ini membatasi lokasi yang dicantumkan pada listing, bukan membuktikan lokasi fisik penjual. Alamat yang diisi sendiri, IP, dan GPS tidak dianggap bukti lokasi fisik.
 
 ## 5. Membership penjual
 
@@ -118,10 +121,16 @@ Sebelum membuat listing, backend harus memeriksa:
 
 Aturan tambahan:
 
-- Kondisi Second/Like New memerlukan minimal tiga foto sesuai konsep awal.
-- Kuota dihitung dari listing berstatus aktif, ditambah kapasitas add-on yang masih berlaku.
-- Perpanjangan, pengaktifan ulang, dan pemasangan baru harus memeriksa ulang kelayakan yang relevan; tidak boleh menjadi jalan pintas melewati kuota atau cooldown.
-- Pengecekan kuota dan pembuatan/pengaktifan listing harus konsisten terhadap request bersamaan, menggunakan transaksi dan kontrol konkurensi yang sesuai.
+- Kondisi Second/Like New memerlukan minimal tiga foto; BNIB/New memerlukan minimal satu foto.
+- Foto menerima JPEG, PNG, atau WebP, maksimal 5 MB per foto dan 8 foto per listing. Upload memakai signed upload Cloudinary; backend memverifikasi aset dan ukurannya sebelum dikaitkan ke listing. Upload preset Cloudinary wajib dikonfigurasi dengan batas 5 MB dan format yang sama; backend tetap menolak hasil upload yang melanggar batas.
+- Penghapusan foto dilakukan melalui endpoint pemilik aset yang juga menghapus file Cloudinary secara idempoten. Memperbarui `photo_ids` tidak melepas foto lama secara diam-diam; foto lama harus dihapus eksplisit agar tidak menjadi aset yatim.
+- Kategori awal yang di-seed: Tanaman air, Hewan air, Peralatan, Hardscape, Akuarium, dan Lainnya. Kondisi merupakan tag terkontrol; daftar awal BNIB, Baru, Like New, dan Second.
+- Filter listing mencakup teks judul/deskripsi, kategori, kondisi, rentang harga, kecamatan/kelurahan; urutan tersedia berdasarkan terbaru atau harga. Pagination default 20 dan maksimal 50 item.
+- Listing aktif berlaku 30 hari untuk Personal, 60 hari untuk Toko, dan 90 hari untuk Juragan. Masa membership berbayar harus aktif agar tier berbayar berlaku.
+- Status listing yang tersimpan adalah Active, Sold, dan Expired. Penghapusan penjual memakai soft delete dan tidak tampil di publik atau dihitung dalam kuota; foto listing arsip dipertahankan. Listing Sold tidak dapat diaktifkan kembali.
+- Perpanjangan hanya untuk listing Expired, berlaku dari waktu permintaan setelah validasi ulang. Listing aktif tidak dapat diperpanjang lebih awal.
+- Job kedaluwarsa berjalan per menit, idempoten, dan memproses batch. Pemasangan, pengaktifan ulang, penjualan, kedaluwarsa, dan penghapusan memakai transaksi serta lock per akun agar kuota/cooldown konsisten terhadap request bersamaan.
+- Kuota M3 memakai kapasitas dasar tier. Struktur response menyiapkan kapasitas add-on; pembelian/pemberian add-on belum aktif sampai M4.
 - Listing yang sudah terjual tidak diubah kembali menjadi tersedia hanya untuk menghindari aturan pemasangan.
 
 ## 7. Cooldown Personal
@@ -265,8 +274,8 @@ Draft endpoint mark-sold/rating perlu disesuaikan saat modul transaksi dibuat. A
 
 ## 13. Penyesuaian dokumentasi dan pengujian
 
-- Draft OpenAPI lokal masih menjadi referensi endpoint dasar, bukan kontrak final yang sudah memuat seluruh revisi.
-- Perbarui kontrak API saat implementasi menambahkan konfirmasi transaksi, status nonaktif, aturan upload Cloudinary, dan aturan lainnya.
+- `openapi.yaml` adalah kontrak API yang dipublikasikan dan diperbarui bersama implementasi. Draft `openapi-aquascape.yaml` lokal tetap hanya referensi dan tidak tersedia dalam clone.
+- Kontrak akan diperbarui lagi saat M4/M5 menambahkan status penonaktifan sistem, membership/add-on, konfirmasi transaksi, rating, dan aturan terkait.
 - Uji batas waktu cooldown/membership/add-on, penurunan hak akun, otorisasi, dan konsistensi kuota.
 - Kredensial asli, OTP pengguna nyata, dan secret tidak boleh masuk Git atau log production.
 - Pembuatan dokumen ini tidak mencakup scaffold aplikasi, commit, atau push.

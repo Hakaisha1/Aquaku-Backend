@@ -17,13 +17,13 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 | M0 | Inisialisasi dan acuan proyek | Tidak ada | Selesai |
 | M1 | Fondasi NestJS dan PostgreSQL | M0 | Selesai |
 | M2 | Akun, autentikasi, dan OTP development | M1 | Selesai |
-| M3 | Marketplace dan aturan listing | M2; keputusan wilayah dan lifecycle listing | Belum dimulai |
+| M3 | Marketplace dan aturan listing | M2; keputusan wilayah dan lifecycle listing | Selesai |
 | M4 | Membership, add-on, dan admin | M3; keputusan lifecycle hak berbayar | Belum dimulai |
 | M5 | Konfirmasi transaksi dan kepercayaan | M3; keputusan konfirmasi transaksi | Belum dimulai |
 | M6 | Forum dan MongoDB | M4 dan M5 sebagai prioritas delivery | Belum dimulai |
 | M7 | Kesiapan uji pengguna dan rilis | M4–M6 untuk MVP forum + marketplace | Belum dimulai |
 
-**Posisi saat ini:** M0, M1, dan M2 selesai. `.env.example` telah diselaraskan ke PostgreSQL development port 5433 dan menghapus variabel MongoDB yang belum dipakai. Migrasi akun sudah diterapkan pada database development dan database test; unit, e2e, dan integration test lulus. Perubahan sesi ini belum di-commit atau di-push.
+**Posisi saat ini:** M0–M3 selesai. Migrasi marketplace sudah diterapkan ke database development dan database test. Unit, e2e, dan integration test lulus; adapter Cloudinary diuji palsu karena kredensial/preset nyata tidak tersedia di environment. Perubahan sesi ini belum di-commit atau di-push.
 
 ## 3. Checklist dan kriteria selesai
 
@@ -75,21 +75,22 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 
 ### M3 — Marketplace dan aturan listing
 
-- [ ] Selesaikan keputusan wilayah, lifecycle listing, dan interaksi cooldown yang masih terbuka.
-- [ ] Buat skema/migrasi listing, tag, kategori, toko, serta constraint satu toko per akun.
-- [ ] Implementasikan pembatasan Kota Semarang berdasarkan aturan wilayah yang disepakati.
-- [ ] Integrasikan upload Cloudinary dengan otorisasi, batas file, dan pengujian menggunakan adapter palsu.
-- [ ] Implementasikan daftar/detail listing, pencarian, filter, dan pagination.
-- [ ] Implementasikan pembuatan/perubahan listing, izin tag, dan syarat minimal foto.
-- [ ] Implementasikan kuota dan masa tayang Personal/Toko/Juragan sesuai `revision.md`.
-- [ ] Implementasikan tandai terjual, hapus, perpanjang, dan pengaktifan ulang sesuai lifecycle yang disepakati.
-- [ ] Implementasikan cooldown 7 hari/2 hari dan endpoint informasi kuota/cooldown.
-- [ ] Implementasikan kedaluwarsa listing dengan job yang aman dijalankan ulang.
-- [ ] Uji request bersamaan agar kuota tidak terlampaui dan cooldown tetap konsisten.
+- [x] Finalkan keputusan wilayah, lifecycle listing, dan interaksi cooldown di `revision.md`.
+- [x] Buat skema/migrasi listing, tag, kategori, toko, serta constraint satu toko per akun.
+- [x] Implementasikan pembatasan Kota Semarang memakai 177 kode kelurahan yang divalidasi backend.
+- [x] Integrasikan signed upload Cloudinary dengan otorisasi, preset/batas file, dan adapter palsu untuk pengujian.
+- [x] Implementasikan daftar/detail listing, pencarian, filter, sort, dan pagination.
+- [x] Implementasikan pembuatan/perubahan listing, izin tag kondisi, dan syarat jumlah foto.
+- [x] Implementasikan kuota dan masa tayang Personal/Toko/Juragan sesuai `revision.md`.
+- [x] Implementasikan tandai terjual, soft delete, perpanjangan listing Expired, dan aturan listing Sold.
+- [x] Implementasikan cooldown 7 hari/2 hari dan endpoint informasi kuota/cooldown.
+- [x] Implementasikan job kedaluwarsa batch yang idempoten.
+- [x] Publikasikan kontrak endpoint M3 pada `openapi.yaml`.
+- [x] Uji request bersamaan agar kuota tidak terlampaui serta uji transisi kedaluwarsa/cooldown.
 
-**Selesai jika:** alur pengguna terverifikasi → pasang listing → pencarian → kontak WhatsApp → terjual berjalan; seluruh aturan kuota, tag, foto, wilayah, cooldown, dan kedaluwarsa teruji. Tier berbayar belum dapat dibeli pengguna sebelum M4.
+**Selesai jika:** alur pengguna terverifikasi → pasang listing → pencarian → kontak WhatsApp → terjual berjalan; aturan kuota, tag, foto, wilayah, cooldown, dan kedaluwarsa diuji. Migrasi diterapkan pada database development dan test. Tier berbayar belum dapat dibeli pengguna sebelum M4.
 
-**Catatan:** tandai terjual pada tahap ini mengurus status listing dan cooldown. Hubungan pembeli, konfirmasi transaksi, serta hak memberi rating diselesaikan di M5; jangan mengunci desain yang menghalangi alur tersebut.
+**Catatan:** tandai terjual pada tahap ini mengurus status listing dan cooldown. Hubungan pembeli, konfirmasi transaksi, serta hak memberi rating diselesaikan di M5. Kredensial Cloudinary dan preset signed tetap perlu disiapkan untuk upload ke akun Cloudinary nyata.
 
 ### M4 — Membership, add-on, dan admin
 
@@ -143,18 +144,18 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 
 Jangan mengisi keputusan bisnis yang belum disepakati dengan asumsi tersembunyi. Catat hasilnya di `revision.md` sebelum coding modul tersebut.
 
-| Keputusan | Harus selesai sebelum |
-| --- | --- |
-| Kebijakan password/token, masa berlaku OTP, batas percobaan, dan jeda kirim ulang | M2 |
-| Data wilayah Kota Semarang, alamat wajib, dan cara pemeriksaan kelayakan | M3 |
-| Lifecycle pengaktifan ulang/perpanjangan, batch kedaluwarsa, serta penentuan kuota penuh dengan add-on | M3 |
-| Tipe/ukuran file, signed upload, kepemilikan dan penghapusan media | Integrasi Cloudinary di M3 |
-| Urutan listing yang dinonaktifkan, pengaktifan kembali, dan efek penonaktifan sistem terhadap cooldown | M4 |
-| Perpanjangan lebih awal, upgrade di tengah periode, serta prorata | M4 |
-| Harga/paket add-on, penumpukan periode, dan cara memakai lewati cooldown | M4 |
-| Cooldown saat akun berpindah antara Personal dan tier berbayar | M4 |
-| Pembeli tanpa akun, penolakan konfirmasi, dan koreksi pembeli | M5 |
-| Provider OTP nyata dan konfigurasi deployment | Uji pengguna nyata/M7 |
+| Keputusan | Harus selesai sebelum | Status |
+| --- | --- | --- |
+| Kebijakan password/token, masa berlaku OTP, batas percobaan, dan jeda kirim ulang | M2 | Selesai |
+| Data wilayah Kota Semarang, alamat wajib, dan cara pemeriksaan kelayakan | M3 | Final di `revision.md` |
+| Lifecycle listing, batch kedaluwarsa, dan interaksi cooldown | M3 | Final di `revision.md` |
+| Tipe/ukuran file, signed upload, kepemilikan dan penghapusan media | Integrasi Cloudinary di M3 | Final di `revision.md` |
+| Urutan listing yang dinonaktifkan, pengaktifan kembali, dan efek penonaktifan sistem terhadap cooldown | M4 | Belum diputuskan |
+| Perpanjangan lebih awal, upgrade di tengah periode, serta prorata | M4 | Belum diputuskan |
+| Harga/paket add-on, penumpukan periode, dan cara memakai lewati cooldown | M4 | Belum diputuskan |
+| Cooldown saat akun berpindah antara Personal dan tier berbayar | M4 | Belum diputuskan |
+| Pembeli tanpa akun, penolakan konfirmasi, dan koreksi pembeli | M5 | Belum diputuskan |
+| Provider OTP nyata dan konfigurasi deployment | Uji pengguna nyata/M7 | Belum diputuskan |
 
 ## 5. Aturan commit atomik
 
@@ -224,6 +225,7 @@ Dokumen ini **bukan izin otomatis untuk commit, membuat branch, atau push**. Jan
 | 2026-11-08 | M0 | Acuan sistem dan timeline masuk repositori; README selaras; berhenti sebelum M1 | Tinjauan konsistensi dokumen, aturan ignore, dan pemeriksaan whitespace Git; test aplikasi tidak dijalankan karena belum ada aplikasi | Commit checkpoint yang memuat baris ini |
 | 2026-11-09 | M1 | `.env.example` diselaraskan ke URL PostgreSQL port 5433 dan variabel MongoDB dihapus; M1 ditutup | `npm run db:validate`, build, lint, unit test, dan e2e lulus pada validasi sesi; diff Git ditinjau karena file tidak dapat dibuka langsung oleh editor | Belum di-commit |
 | 2026-11-09 | M2 | Implementasi akun, autentikasi, token, profil, OTP, dan migrasi; migrasi diterapkan ke `aquaku` serta `aquaku_test` | 117 unit, 63 e2e, 7 integration test lulus; `db:status` menunjukkan database development up to date | Belum di-commit |
+| 2026-11-09 | M3 | Skema/migrasi marketplace, 177 kode kelurahan, kategori/tag, toko, listing, kuota/cooldown, expiry job, dan signed upload Cloudinary | 124 unit, 63 e2e, 8 integration test lulus; build/lint/schema validation lulus; migrasi diterapkan ke database development dan test; uji concurrency membuat tepat 5 listing dari 6 request | Belum di-commit |
 
 ### Checkpoint M1
 

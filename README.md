@@ -4,7 +4,7 @@ Backend untuk forum komunitas dan marketplace hobiis aquascape. Cakupan awal dib
 
 ## Status dan acuan
 
-**M1 — Fondasi NestJS dan PostgreSQL:** selesai. **M2 — Akun, autentikasi, dan OTP development:** selesai; migrasi akun sudah diterapkan pada database development dan test, dan alur akun sudah diuji secara integrasi.
+**M1 — Fondasi NestJS dan PostgreSQL:** selesai. **M2 — Akun, autentikasi, dan OTP development:** selesai. **M3 — Marketplace dan aturan listing:** selesai; migrasi marketplace sudah diterapkan ke database development dan test, dan alur listing, upload (adapter palsu), kuota, cooldown, serta request bersamaan sudah diuji secara integrasi.
 
 - [`revision.md`](revision.md): keputusan sistem terbaru dan detail yang belum diputuskan.
 - [`timeline.md`](timeline.md): milestone, checklist progres, kriteria selesai, dan aturan commit atomik.
@@ -34,7 +34,7 @@ PostgreSQL menjadi sumber kebenaran identitas dan tier. MongoDB, Cloudinary, ser
 - Membership Personal, Toko, dan Juragan; upgrade/add-on melalui transfer dan persetujuan admin.
 - Forum dengan kategori, foto, posting, dan komentar pada tahap berikutnya.
 - Konfirmasi transaksi oleh pembeli sebelum pemberian rating; laporan dan moderasi admin.
-- Upload media melalui Cloudinary, dengan mekanisme upload ditentukan saat integrasi.
+- Upload foto melalui signed upload Cloudinary dengan verifikasi ukuran, format, dan kepemilikan oleh backend.
 
 Transaksi barang diarahkan melalui WhatsApp untuk COD/meetup atau pengiriman lokal. Belum ada checkout, escrow, atau payment gateway transaksi barang. Midtrans untuk pembayaran platform dan OAuth ditunda. Tank profile hanya kandidat fitur unggulan, bukan kewajiban fondasi.
 
@@ -58,7 +58,31 @@ Nilai tersebut menjadi baseline implementasi MVP, tetapi tetap perlu validasi bi
 - Add-on kapasitas berlaku **30 hari sejak persetujuan admin**, dapat dipakai ulang selama berlaku, dan tidak menghapus cooldown. Add-on lewati cooldown terpisah dan tidak menambah kapasitas.
 - Saat hak membership/add-on habis, listing yang tidak lagi memenuhi hak akun dinonaktifkan, bukan dihapus permanen.
 
-Backend memvalidasi autentikasi, verifikasi HP, wilayah, izin tag, foto, cooldown, dan kuota. Second/Like New memerlukan minimal tiga foto. Detail lifecycle yang belum final tercatat dalam `revision.md` dan gerbang keputusan `timeline.md`.
+Backend memvalidasi autentikasi, verifikasi HP, kelurahan Kota Semarang, tier, foto, cooldown, dan kuota. Second/Like New memerlukan minimal tiga foto; maksimal delapan foto per listing. Detail lifecycle dan daftar wilayah ada di `revision.md`.
+
+### API marketplace
+
+Semua endpoint memakai prefix `/api/v1`.
+
+| Endpoint | Akses dan fungsi |
+| --- | --- |
+| `GET /marketplace/regions` | Publik; daftar kode kelurahan dan kecamatan yang diterima |
+| `GET /marketplace/taxonomy` | Publik; kategori dan tag kondisi |
+| `GET /marketplace/listings` | Publik; pencarian teks, kategori, kondisi, harga, lokasi, sort, pagination |
+| `GET /marketplace/listings/:id` | Publik; detail listing aktif beserta tautan WhatsApp penjual jika tersedia |
+| `GET /marketplace/me/listings` | Login; listing aktif, terjual, dan kedaluwarsa milik sendiri |
+| `POST /marketplace/shops` | HP terverifikasi dan tier berbayar; membuat satu toko per akun |
+| `POST /marketplace/media/upload-signatures` | HP terverifikasi; membuat parameter signed upload dan reservasi aset |
+| `POST /marketplace/media/confirm-upload` | HP terverifikasi; backend memverifikasi aset Cloudinary sebelum digunakan |
+| `DELETE /marketplace/media/:assetId` | Pemilik aset; menghapus file di Cloudinary secara idempoten |
+| `POST /marketplace/listings` | HP terverifikasi; membuat listing dengan foto terverifikasi |
+| `PATCH /marketplace/listings/:id` | Pemilik listing; mengubah listing aktif tanpa mereset masa tayang |
+| `POST /marketplace/listings/:id/sold` | Pemilik listing; menandai terjual dan mengevaluasi cooldown |
+| `DELETE /marketplace/listings/:id` | Pemilik listing; soft delete dan cooldown Personal 2 hari |
+| `POST /marketplace/listings/:id/renew` | Pemilik listing; memperpanjang listing Expired setelah validasi ulang |
+| `GET /marketplace/me/quota` | Login; informasi kuota dan cooldown akun |
+
+Untuk upload, klien meminta signature, mengirim foto langsung ke endpoint upload Cloudinary dengan parameter yang dikembalikan, lalu memanggil `confirm-upload`. Cloudinary tidak diperlukan untuk menjalankan aplikasi, tetapi endpoint media mengembalikan `503` sampai kredensial dan preset disiapkan.
 
 ## Menjalankan fondasi dari clone baru
 
@@ -163,6 +187,10 @@ Aplikasi memuat `.env` saat startup tanpa menimpa environment proses yang sudah 
 | `JWT_ACCESS_SECRET` | Development/test boleh kosong (secret acak per proses); production wajib minimal 32 karakter acak |
 | `JWT_REFRESH_SECRET` | Aturan sama, wajib berbeda dari access secret |
 | `CORS_ORIGIN` | Opsional; satu origin HTTP/HTTPS tanpa path/kredensial/wildcard; hapus variabel untuk menonaktifkan CORS, jangan isi string kosong |
+| `CLOUDINARY_CLOUD_NAME` | Opsional; harus diisi bersama seluruh variabel Cloudinary di bawah |
+| `CLOUDINARY_API_KEY` | Opsional; kunci publik Cloudinary, dibutuhkan untuk signed upload |
+| `CLOUDINARY_API_SECRET` | Opsional; secret Cloudinary, tidak pernah dikirim ke klien atau log |
+| `CLOUDINARY_UPLOAD_PRESET` | Opsional; preset signed yang disiapkan dengan format JPEG/PNG/WebP dan batas 5 MB |
 
 Contoh nilai development (bukan secret production):
 
@@ -173,7 +201,7 @@ API_PREFIX=/api/v1
 DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku
 ```
 
-Template `.env.example` memakai URL PostgreSQL development di port host 5433 dan tidak memuat konfigurasi MongoDB yang belum dipakai. Secret token development dibuat acak saat proses berjalan sehingga token tidak bertahan setelah restart. Untuk production, hasilkan dua secret berbeda dengan sumber acak yang aman dan jangan gunakan nilai contoh.
+Template `.env.example` memakai URL PostgreSQL development di port host 5433 dan tidak memuat konfigurasi MongoDB yang belum dipakai. Secret token development dibuat acak saat proses berjalan sehingga token tidak bertahan setelah restart. Untuk production, hasilkan dua secret berbeda dengan sumber acak yang aman dan jangan gunakan nilai contoh. Konfigurasi Cloudinary bersifat opsional dan harus lengkap: siapkan upload preset bertipe signed yang membatasi format dan ukuran file menjadi JPEG/PNG/WebP maksimal 5 MB. Backend tetap memeriksa format dan ukuran setelah upload; upload yang tidak sesuai akan ditolak dan diminta untuk dibersihkan dari Cloudinary.
 
 Request menggunakan whitelist DTO dan menolak field asing. Payload JSON terlalu besar ditolak dengan `413`, encoding yang tidak didukung dengan `415`. Error HTTP memakai bentuk `{ "error": { "code": "...", "message": "..." } }`; detail exception internal tidak dikirim ke klien. Prefix, validasi, filter error, dan CORS diterapkan melalui konfigurasi aplikasi yang juga dipakai e2e test.
 
@@ -190,8 +218,9 @@ Request menggunakan whitelist DTO dan menolak field asing. Payload JSON terlalu 
 - `README.md`: ringkasan proyek dan navigasi dokumentasi.
 - `revision.md`: acuan sistem terbaru.
 - `timeline.md`: rencana delivery dan pencatatan progres.
+- `openapi.yaml`: kontrak REST API yang dipublikasikan.
 
-Dokumen lokal `konsep-forum-ecommerce-aquascape (2).md` dan `openapi-aquascape.yaml` tetap diabaikan Git dan tidak tersedia dalam clone. Kontrak API yang boleh dipublikasikan disiapkan saat implementasi berkembang; clone tidak boleh bergantung pada dua file lokal tersebut untuk setup.
+Dokumen lokal `konsep-forum-ecommerce-aquascape (2).md` dan draft `openapi-aquascape.yaml` tetap diabaikan Git dan tidak tersedia dalam clone. Kontrak API yang dipublikasikan dan dapat dipakai dari clone ada di [`openapi.yaml`](openapi.yaml); setup tidak bergantung pada dokumen lokal tersebut.
 
 ## Aturan pengerjaan
 
@@ -199,4 +228,4 @@ Satu commit menyelesaikan satu tujuan logis beserta test, migrasi, dan dokumenta
 
 Fondasi telah diverifikasi dari clone bersih: `npm ci`, migrasi/status, build, lint, 89 unit test, 63 e2e test, serta 6 integration test lulus. Audit production tidak menemukan kerentanan; audit keseluruhan masih mencatat 30 temuan tooling development (2 low, 28 moderate), bukan bukti proyek siap production.
 
-M1 dan M2 selesai. Migrasi akun telah diterapkan dan alur registrasi, login, refresh, OTP, serta profil telah diuji. Ikuti status dan catatan validasi di `timeline.md`.
+M1–M3 selesai. Migrasi akun dan marketplace telah diterapkan pada database development serta test; alur akun, listing, pencarian, upload adapter palsu, kuota, cooldown, dan expiry job telah diuji. Upload Cloudinary nyata memerlukan kredensial serta signed preset. Ikuti status dan catatan validasi di `timeline.md`.

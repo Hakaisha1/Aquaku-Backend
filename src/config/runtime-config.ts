@@ -10,6 +10,10 @@ export interface RuntimeConfig {
   readonly jwtAccessSecret: string;
   readonly jwtRefreshSecret: string;
   readonly corsOrigin?: string;
+  readonly cloudinaryCloudName?: string;
+  readonly cloudinaryApiKey?: string;
+  readonly cloudinaryApiSecret?: string;
+  readonly cloudinaryUploadPreset?: string;
 }
 
 export const RUNTIME_CONFIG = Symbol('RUNTIME_CONFIG');
@@ -81,6 +85,12 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
   const corsOrigin = env.CORS_ORIGIN === undefined
     ? undefined
     : parseCorsOrigin(env.CORS_ORIGIN);
+  const cloudinaryCloudName = env.CLOUDINARY_CLOUD_NAME;
+  const cloudinaryApiKey = env.CLOUDINARY_API_KEY;
+  const cloudinaryApiSecret = env.CLOUDINARY_API_SECRET;
+  const cloudinaryUploadPreset = env.CLOUDINARY_UPLOAD_PRESET;
+  const cloudinaryValues = [cloudinaryCloudName, cloudinaryApiKey, cloudinaryApiSecret, cloudinaryUploadPreset];
+  const cloudinaryConfigured = cloudinaryValues.some((value) => value !== undefined && value !== '');
 
   if (!['development', 'test', 'production'].includes(appEnv)) fields.push('APP_ENV');
   if (!/^[0-9]+$/.test(port) || Number(port) < 1 || Number(port) > 65535) fields.push('PORT');
@@ -92,6 +102,20 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
   if (jwtRefreshSecret.length < 32) fields.push('JWT_REFRESH_SECRET');
   if (jwtAccessSecret && jwtAccessSecret === jwtRefreshSecret) fields.push('JWT_REFRESH_SECRET');
   if (env.CORS_ORIGIN !== undefined && corsOrigin === undefined) fields.push('CORS_ORIGIN');
+  if (cloudinaryConfigured) {
+    if (!cloudinaryCloudName || !/^[a-zA-Z0-9_-]{1,128}$/.test(cloudinaryCloudName)) {
+      fields.push('CLOUDINARY_CLOUD_NAME');
+    }
+    if (!cloudinaryApiKey || !/^[a-zA-Z0-9_-]{1,128}$/.test(cloudinaryApiKey)) {
+      fields.push('CLOUDINARY_API_KEY');
+    }
+    if (!cloudinaryApiSecret || cloudinaryApiSecret.length < 16 || cloudinaryApiSecret.length > 512 || /[\s\p{Cc}]/u.test(cloudinaryApiSecret)) {
+      fields.push('CLOUDINARY_API_SECRET');
+    }
+    if (!cloudinaryUploadPreset || !/^[a-zA-Z0-9_-]{1,128}$/.test(cloudinaryUploadPreset)) {
+      fields.push('CLOUDINARY_UPLOAD_PRESET');
+    }
+  }
   if (fields.length) throw new ConfigValidationError(Object.freeze(fields));
 
   return Object.freeze({
@@ -102,5 +126,11 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
     jwtAccessSecret,
     jwtRefreshSecret,
     ...(corsOrigin === undefined ? {} : { corsOrigin }),
+    ...(cloudinaryConfigured ? {
+      cloudinaryCloudName,
+      cloudinaryApiKey,
+      cloudinaryApiSecret,
+      cloudinaryUploadPreset,
+    } : {}),
   });
 }
