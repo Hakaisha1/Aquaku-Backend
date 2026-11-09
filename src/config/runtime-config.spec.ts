@@ -6,9 +6,12 @@ const base = { DATABASE_URL: databaseUrl };
 describe('validateConfig', () => {
   it('uses defaults without requiring JWT configuration', () => {
     const config = validateConfig(base);
-    expect(config).toEqual({
+    expect(config).toMatchObject({
       appEnv: 'development', port: 3000, apiPrefix: '/api/v1', databaseUrl,
     });
+    expect(config.jwtAccessSecret).toHaveLength(43);
+    expect(config.jwtRefreshSecret).toHaveLength(43);
+    expect(config.jwtAccessSecret).not.toBe(config.jwtRefreshSecret);
     expect(Object.isFrozen(config)).toBe(true);
   });
 
@@ -17,15 +20,20 @@ describe('validateConfig', () => {
       APP_ENV: 'production', PORT: '65535', API_PREFIX: '/service/v2',
       DATABASE_URL: 'postgres://user:pass@[::1]:5432/aquaku?sslmode=require',
       CORS_ORIGIN: 'https://example.com:443/',
-    })).toEqual({
+      JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
+    })).toMatchObject({
       appEnv: 'production', port: 65535, apiPrefix: '/service/v2',
       databaseUrl: 'postgres://user:pass@[::1]:5432/aquaku?sslmode=require',
+      jwtAccessSecret: 'a'.repeat(32), jwtRefreshSecret: 'b'.repeat(32),
       corsOrigin: 'https://example.com',
     });
   });
 
   it.each(['development', 'test', 'production'])('accepts APP_ENV %s', (APP_ENV) => {
-    expect(validateConfig({ ...base, APP_ENV }).appEnv).toBe(APP_ENV);
+    const secrets = APP_ENV === 'production'
+      ? { JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32) }
+      : {};
+    expect(validateConfig({ ...base, APP_ENV, ...secrets }).appEnv).toBe(APP_ENV);
   });
 
   it.each(['1', '3000', '65535'])('accepts PORT %s', (PORT) => {
@@ -97,6 +105,15 @@ describe('validateConfig', () => {
 
   it.each(['http://localhost:5173', 'https://example.com'])('accepts CORS_ORIGIN %s', (CORS_ORIGIN) => {
     expect(validateConfig({ ...base, CORS_ORIGIN }).corsOrigin).toBe(CORS_ORIGIN);
+  });
+
+  it('requires distinct strong JWT secrets in production', () => {
+    expect(() => validateConfig({ ...base, APP_ENV: 'production' }))
+      .toThrow('Invalid configuration fields: JWT_ACCESS_SECRET, JWT_REFRESH_SECRET');
+    expect(() => validateConfig({
+      ...base, APP_ENV: 'production',
+      JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'a'.repeat(32),
+    })).toThrow('Invalid configuration fields: JWT_REFRESH_SECRET');
   });
 
   it('reports all invalid fields without including values or secrets', () => {

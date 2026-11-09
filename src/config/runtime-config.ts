@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+
 export type AppEnvironment = 'development' | 'test' | 'production';
 
 export interface RuntimeConfig {
@@ -5,10 +7,15 @@ export interface RuntimeConfig {
   readonly port: number;
   readonly apiPrefix: string;
   readonly databaseUrl: string;
+  readonly jwtAccessSecret: string;
+  readonly jwtRefreshSecret: string;
   readonly corsOrigin?: string;
 }
 
 export const RUNTIME_CONFIG = Symbol('RUNTIME_CONFIG');
+
+const developmentAccessSecret = randomBytes(32).toString('base64url');
+const developmentRefreshSecret = randomBytes(32).toString('base64url');
 
 export class ConfigValidationError extends Error {
   constructor(readonly fields: readonly string[]) {
@@ -67,6 +74,10 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
   const port = env.PORT ?? '3000';
   const apiPrefix = env.API_PREFIX ?? '/api/v1';
   const databaseUrl = env.DATABASE_URL ?? '';
+  const jwtAccessSecret = env.JWT_ACCESS_SECRET ||
+    (appEnv === 'production' ? '' : developmentAccessSecret);
+  const jwtRefreshSecret = env.JWT_REFRESH_SECRET ||
+    (appEnv === 'production' ? '' : developmentRefreshSecret);
   const corsOrigin = env.CORS_ORIGIN === undefined
     ? undefined
     : parseCorsOrigin(env.CORS_ORIGIN);
@@ -77,6 +88,9 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
     fields.push('API_PREFIX');
   }
   if (!validDatabaseUrl(databaseUrl)) fields.push('DATABASE_URL');
+  if (jwtAccessSecret.length < 32) fields.push('JWT_ACCESS_SECRET');
+  if (jwtRefreshSecret.length < 32) fields.push('JWT_REFRESH_SECRET');
+  if (jwtAccessSecret && jwtAccessSecret === jwtRefreshSecret) fields.push('JWT_REFRESH_SECRET');
   if (env.CORS_ORIGIN !== undefined && corsOrigin === undefined) fields.push('CORS_ORIGIN');
   if (fields.length) throw new ConfigValidationError(Object.freeze(fields));
 
@@ -85,6 +99,8 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
     port: Number(port),
     apiPrefix,
     databaseUrl,
+    jwtAccessSecret,
+    jwtRefreshSecret,
     ...(corsOrigin === undefined ? {} : { corsOrigin }),
   });
 }

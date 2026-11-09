@@ -4,12 +4,12 @@ Backend untuk forum komunitas dan marketplace hobiis aquascape. Cakupan awal dib
 
 ## Status dan acuan
 
-**M1 — Fondasi NestJS dan PostgreSQL:** konfigurasi tervalidasi, validasi HTTP, Prisma/migrasi, serta health/readiness sudah diimplementasikan dan diuji. Penyesuaian `.env.example` masih terblokir pengaturan privasi editor, sehingga M1 belum ditutup. Autentikasi dan fitur bisnis belum diimplementasikan.
+**M1 — Fondasi NestJS dan PostgreSQL:** selesai. **M2 — Akun, autentikasi, dan OTP development:** selesai; migrasi akun sudah diterapkan pada database development dan test, dan alur akun sudah diuji secara integrasi.
 
 - [`revision.md`](revision.md): keputusan sistem terbaru dan detail yang belum diputuskan.
 - [`timeline.md`](timeline.md): milestone, checklist progres, kriteria selesai, dan aturan commit atomik.
 
-Jika ada perbedaan dengan konsep atau draft OpenAPI lama, ikuti `revision.md`. Daftar fitur di bawah adalah rencana, bukan fitur yang sudah berjalan.
+Jika ada perbedaan dengan konsep atau draft OpenAPI lama, ikuti `revision.md`. Fitur yang telah tersedia disebutkan di bagian status; fitur lainnya tetap berupa rencana.
 
 ## Stack yang disepakati
 
@@ -75,7 +75,7 @@ npm run build
 npm start
 ```
 
-Build otomatis menghasilkan Prisma Client; kode hasil generate tidak disimpan di Git. Untuk development gunakan `npm run start:dev`, yang juga menghasilkan client terlebih dahulu. Port HTTP default adalah 3000; endpoint bisnis belum tersedia.
+Build otomatis menghasilkan Prisma Client; kode hasil generate tidak disimpan di Git. Untuk development gunakan `npm run start:dev`, yang juga menghasilkan client terlebih dahulu. Port HTTP default adalah 3000. Endpoint akun tersedia di `/api/v1/auth` dan `/api/v1/users`.
 
 ```sh
 npm run lint
@@ -154,12 +154,14 @@ Koneksi Prisma lazy agar aplikasi tetap dapat memberikan liveness saat database 
 
 Aplikasi memuat `.env` saat startup tanpa menimpa environment proses yang sudah tersedia, lalu memvalidasi konfigurasi sebelum inisialisasi NestJS. Unit/e2e test tidak memuat `.env` lokal.
 
-| Variabel | Aturan M1 |
+| Variabel | Aturan runtime |
 | --- | --- |
 | `APP_ENV` | `development`, `test`, atau `production`; default `development` |
 | `PORT` | Integer 1–65535; default `3000` |
 | `API_PREFIX` | Path tanpa trailing slash; default `/api/v1` |
 | `DATABASE_URL` | Wajib, URL PostgreSQL dengan host dan nama database |
+| `JWT_ACCESS_SECRET` | Development/test boleh kosong (secret acak per proses); production wajib minimal 32 karakter acak |
+| `JWT_REFRESH_SECRET` | Aturan sama, wajib berbeda dari access secret |
 | `CORS_ORIGIN` | Opsional; satu origin HTTP/HTTPS tanpa path/kredensial/wildcard; hapus variabel untuk menonaktifkan CORS, jangan isi string kosong |
 
 Contoh nilai development (bukan secret production):
@@ -171,13 +173,14 @@ API_PREFIX=/api/v1
 DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku
 ```
 
-`.env.example` awal belum diselaraskan karena dilindungi pengaturan `private_files` editor. Jangan menganggap semua variabel dalam template awal sudah dibutuhkan: JWT dan MongoDB belum digunakan pada M1. Ikuti tabel ini sampai template dapat diperbarui dengan akses yang diizinkan.
+Template `.env.example` memakai URL PostgreSQL development di port host 5433 dan tidak memuat konfigurasi MongoDB yang belum dipakai. Secret token development dibuat acak saat proses berjalan sehingga token tidak bertahan setelah restart. Untuk production, hasilkan dua secret berbeda dengan sumber acak yang aman dan jangan gunakan nilai contoh.
 
 Request menggunakan whitelist DTO dan menolak field asing. Payload JSON terlalu besar ditolak dengan `413`, encoding yang tidak didukung dengan `415`. Error HTTP memakai bentuk `{ "error": { "code": "...", "message": "..." } }`; detail exception internal tidak dikirim ke klien. Prefix, validasi, filter error, dan CORS diterapkan melalui konfigurasi aplikasi yang juga dipakai e2e test.
 
 - Jangan commit `.env`, secret asli, token, atau data pribadi.
-- Mode OTP prototipe memakai pengirim lokal tanpa biaya SMS/WhatsApp, lengkap dengan masa berlaku dan pembatasan percobaan.
-- OTP lokal hanya menguji alur, bukan membuktikan kepemilikan nomor HP, dan tidak boleh aktif di production.
+- OTP development memakai kode 6 digit yang berlaku 5 menit, maksimal 5 percobaan, dan jeda kirim ulang 60 detik. Kode tersedia pada response lokal register/resend; gunakan hanya di development/test.
+- OTP lokal hanya menguji alur, bukan membuktikan kepemilikan nomor HP. Registrasi/verifikasi/resend memakai OTP lokal ditolak di production; registrasi production menunggu provider OTP nyata.
+- Password menerima 12–128 karakter dan di-hash menggunakan scrypt. Access token berlaku 15 menit; refresh token berlaku 30 hari, disimpan dalam bentuk hash, dan dirotasi setiap digunakan.
 - Provider OTP nyata harus dipilih sebelum verifikasi dipakai oleh pengguna nyata.
 
 ## Isi repositori
@@ -196,4 +199,4 @@ Satu commit menyelesaikan satu tujuan logis beserta test, migrasi, dan dokumenta
 
 Fondasi telah diverifikasi dari clone bersih: `npm ci`, migrasi/status, build, lint, 89 unit test, 63 e2e test, serta 6 integration test lulus. Audit production tidak menemukan kerentanan; audit keseluruhan masih mencatat 30 temuan tooling development (2 low, 28 moderate), bukan bukti proyek siap production.
 
-Sisa checkpoint **M1** adalah penyelarasan `.env.example` setelah akses editor diizinkan. M2 dan modul bisnis belum dimulai. Ikuti status dan catatan validasi di `timeline.md`.
+M1 dan M2 selesai. Migrasi akun telah diterapkan dan alur registrasi, login, refresh, OTP, serta profil telah diuji. Ikuti status dan catatan validasi di `timeline.md`.

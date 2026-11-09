@@ -15,15 +15,15 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 | ID | Milestone | Dependensi | Status |
 | --- | --- | --- | --- |
 | M0 | Inisialisasi dan acuan proyek | Tidak ada | Selesai |
-| M1 | Fondasi NestJS dan PostgreSQL | M0 | Terblokir |
-| M2 | Akun, autentikasi, dan OTP development | M1 | Belum dimulai |
+| M1 | Fondasi NestJS dan PostgreSQL | M0 | Selesai |
+| M2 | Akun, autentikasi, dan OTP development | M1 | Selesai |
 | M3 | Marketplace dan aturan listing | M2; keputusan wilayah dan lifecycle listing | Belum dimulai |
 | M4 | Membership, add-on, dan admin | M3; keputusan lifecycle hak berbayar | Belum dimulai |
 | M5 | Konfirmasi transaksi dan kepercayaan | M3; keputusan konfirmasi transaksi | Belum dimulai |
 | M6 | Forum dan MongoDB | M4 dan M5 sebagai prioritas delivery | Belum dimulai |
 | M7 | Kesiapan uji pengguna dan rilis | M4–M6 untuk MVP forum + marketplace | Belum dimulai |
 
-**Posisi saat ini:** M0 selesai. Implementasi fondasi M1 dan validasi clone bersih selesai; penutupan M1 terblokir hanya oleh akses `.env.example` melalui pengaturan `private_files` editor. Belum masuk M2. Semua checkpoint yang sudah selesai di-commit secara atomik, belum di-push.
+**Posisi saat ini:** M0, M1, dan M2 selesai. `.env.example` telah diselaraskan ke PostgreSQL development port 5433 dan menghapus variabel MongoDB yang belum dipakai. Migrasi akun sudah diterapkan pada database development dan database test; unit, e2e, dan integration test lulus. Perubahan sesi ini belum di-commit atau di-push.
 
 ## 3. Checklist dan kriteria selesai
 
@@ -49,29 +49,29 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 - [x] Siapkan Docker Compose PostgreSQL, volume data, dan health check database.
 - [x] Integrasikan Prisma dan mekanisme migrasi yang dapat dijalankan ulang dari database kosong.
 - [x] Validasi environment saat startup.
-- [ ] Sesuaikan `.env.example` tanpa secret asli; terblokir pengaturan `private_files` editor, kontrak sementara tersedia di README.
+- [x] Sesuaikan `.env.example` tanpa secret asli; URL PostgreSQL mengarah ke `127.0.0.1:5433`, variabel MongoDB yang belum dipakai dihapus, dan secret JWT tetap berupa placeholder kosong untuk development.
 - [x] Terapkan prefix `/api/v1`, validasi request, dan format error konsisten.
 - [x] Tambahkan health/readiness check yang membedakan aplikasi hidup dari database siap.
 - [x] Dokumentasikan setup dari clone baru dan jalankan pengujian fondasi.
 
 **Selesai jika:** aplikasi dapat dibangun dan dijalankan mengikuti README; konfigurasi tidak valid ditolak; readiness mendeteksi kegagalan database; pengujian terkait lulus. MongoDB, Cloudinary, OTP nyata, dan Midtrans tidak menjadi dependensi tahap ini.
 
-**Sisa untuk menutup M1:** izinkan akses `.env.example` di editor, selaraskan template dengan kontrak konfigurasi README/port host 5433, validasi kembali, lalu commit checkpoint tersebut. Jangan menandai M1 selesai sebelum langkah ini selesai. Docker PostgreSQL development tetap berjalan; tidak ada perintah reset/drop atau pekerjaan M2 yang dijalankan.
+**Penutupan M1:** template env telah diselaraskan dengan kontrak README dan Compose. Diff Git mengonfirmasi pembaruan URL serta penghapusan konfigurasi MongoDB; akses baca penuh tetap dibatasi `private_files`. Test/build/lint fondasi lulus pada validasi sesi ini. M1 selesai. Docker tidak aktif pada percobaan awal M2, lalu berhasil dijalankan untuk menerapkan migrasi tanpa reset/drop.
 
 ### M2 — Akun, autentikasi, dan OTP development
 
-- [ ] Finalkan kebijakan password/token serta masa berlaku dan batas percobaan OTP.
-- [ ] Buat skema dan migrasi akun, normalisasi nomor HP, serta constraint email/nomor HP unik.
-- [ ] Implementasikan registrasi dengan tier awal Personal dan password yang di-hash.
-- [ ] Implementasikan login, access token, refresh token, dan penanganan refresh token tidak valid/kedaluwarsa.
-- [ ] Implementasikan profil sendiri/publik dengan pembatasan data sensitif.
-- [ ] Implementasikan pengirim OTP development dan pengirim palsu untuk test.
-- [ ] Terapkan kedaluwarsa OTP, batas percobaan, dan jeda kirim ulang.
-- [ ] Pastikan mode OTP lokal tidak dapat digunakan di production.
-- [ ] Implementasikan guard autentikasi, verifikasi HP, dan peran admin/pengguna.
-- [ ] Uji akun duplikat, password salah, token gagal, OTP gagal, dan akses tanpa hak.
+- [x] Finalkan kebijakan password/token serta masa berlaku dan batas percobaan OTP di `revision.md`.
+- [x] Buat skema dan migrasi akun, normalisasi nomor HP, serta constraint email/nomor HP unik.
+- [x] Implementasikan registrasi dengan tier awal Personal dan password yang di-hash.
+- [x] Implementasikan login, access token, refresh token, dan penanganan refresh token tidak valid/kedaluwarsa.
+- [x] Implementasikan profil sendiri/publik dengan pembatasan data sensitif.
+- [x] Implementasikan pengirim OTP development dan pengirim palsu untuk test.
+- [x] Terapkan kedaluwarsa OTP, batas percobaan, dan jeda kirim ulang.
+- [x] Pastikan mode OTP lokal tidak dapat digunakan di production.
+- [x] Implementasikan guard autentikasi, verifikasi HP, dan peran admin/pengguna.
+- [x] Uji akun duplikat, password salah, token gagal, OTP gagal, dan akses tanpa hak.
 
-**Selesai jika:** alur daftar → login → verifikasi development → profil berjalan; akses terlindungi ditolak sesuai kondisi akun; tidak ada secret atau token sensitif bocor lewat response/log.
+**Selesai jika:** alur daftar → login → verifikasi development → profil berjalan; akses terlindungi ditolak sesuai kondisi akun; tidak ada secret atau token sensitif bocor lewat response/log. Migrasi sudah diterapkan pada database development dan test; integration test alur akun, refresh rotation, OTP, dan profil lulus.
 
 ### M3 — Marketplace dan aturan listing
 
@@ -222,6 +222,8 @@ Dokumen ini **bukan izin otomatis untuk commit, membuat branch, atau push**. Jan
 | --- | --- | --- | --- | --- |
 | Belum dicatat | M0 | Git, remote, `.gitignore`, README, dan template env awal | Pemeriksaan ignore, staged whitespace, dan status Git pada inisialisasi | `edeca25` |
 | 2026-11-08 | M0 | Acuan sistem dan timeline masuk repositori; README selaras; berhenti sebelum M1 | Tinjauan konsistensi dokumen, aturan ignore, dan pemeriksaan whitespace Git; test aplikasi tidak dijalankan karena belum ada aplikasi | Commit checkpoint yang memuat baris ini |
+| 2026-11-09 | M1 | `.env.example` diselaraskan ke URL PostgreSQL port 5433 dan variabel MongoDB dihapus; M1 ditutup | `npm run db:validate`, build, lint, unit test, dan e2e lulus pada validasi sesi; diff Git ditinjau karena file tidak dapat dibuka langsung oleh editor | Belum di-commit |
+| 2026-11-09 | M2 | Implementasi akun, autentikasi, token, profil, OTP, dan migrasi; migrasi diterapkan ke `aquaku` serta `aquaku_test` | 117 unit, 63 e2e, 7 integration test lulus; `db:status` menunjukkan database development up to date | Belum di-commit |
 
 ### Checkpoint M1
 
@@ -241,7 +243,13 @@ Dokumen ini **bukan izin otomatis untuk commit, membuat branch, atau push**. Jan
 
 | M1.5 — Verifikasi clone bersih | Clone lokal commit `3549c93`: `npm ci`, deploy/status migrasi, generate/build, lint, coverage unit, e2e, integration, dan audit production lulus. 89 unit, 63 e2e, 6 integration test; coverage unit 71,11% statement (HTTP diuji terpisah melalui e2e). Audit production 0; 30 temuan tooling development tetap dicatat. | `Record M1 verification and remaining blocker` |
 
-Validasi memakai executable Node 24 melalui npm exec karena Node global komputer masih v25. Docker Desktop berhasil dijalankan; pemeriksaan database ada di checkpoint berikutnya. `.env.example` tetap tidak dibaca/diubah karena pengaturan `private_files`.
+Validasi historis memakai executable Node 24 melalui npm exec karena Node global komputer masih v25. `.env.example` diperbarui oleh pengguna; akses baca penuh tetap dibatasi `private_files`, sehingga pemeriksaan perubahan memakai diff Git. Pada 2026-11-09 migrasi berhasil diterapkan ke database development dan test tanpa reset/drop.
+
+### Checkpoint M2
+
+| Checkpoint | Hasil dan validasi | Status |
+| --- | --- | --- |
+| M2.1 — Akun dan autentikasi | Skema/migrasi akun, scrypt, normalisasi email/nomor HP, registrasi, login, JWT access, refresh rotation, profil, guard, serta OTP development dan fake sender. Kebijakan dicatat di `revision.md`. | Migrasi berhasil diterapkan pada `aquaku` dan `aquaku_test`; unit test 117, e2e 63, integration test 7 lulus; lint/build/schema validation lulus. M2 selesai. Perubahan belum di-commit. |
 
 Tanggal historis tidak diisi dengan perkiraan. Tambahkan tanggal aktual pada pembaruan progres berikutnya.
 

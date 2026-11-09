@@ -43,6 +43,14 @@ Dokumen MongoDB merujuk ID pengguna/listing dari PostgreSQL. Salinan data tampil
 - Mendukung access token dan refresh token.
 - OAuth belum diimplementasikan; dapat ditambahkan kemudian.
 
+### Kebijakan keamanan akun M2
+
+- Password menerima 12–128 karakter; tidak ada aturan komposisi wajib. Hash menggunakan scrypt dengan salt acak per akun.
+- Access token JWT berlaku 15 menit. Refresh token JWT berlaku 30 hari, diputar setiap digunakan, dan dapat dipakai sekali; hash token disimpan agar token yang sudah dipakai/dicabut ditolak.
+- Secret access dan refresh harus berbeda dan minimal 32 karakter acak pada production. Development/test tanpa secret memakai secret acak sementara per proses; semua sesi invalid setelah proses dimulai ulang.
+- Nomor HP Indonesia menerima format lokal `08...`, `62...`, atau `+62...`, lalu disimpan ternormalisasi sebagai `+62...`.
+- OTP development berisi 6 digit, berlaku 5 menit, maksimal 5 percobaan per kode, dan pengiriman ulang dibatasi jeda 60 detik. Kode hanya ditampilkan oleh kanal HTTP lokal development/test, tidak dikirim ke nomor asli dan tidak dicatat ke log.
+
 ### Hak akses berdasarkan verifikasi HP
 
 | Aktivitas | Verifikasi HP |

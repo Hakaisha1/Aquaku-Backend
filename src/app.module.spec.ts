@@ -27,10 +27,12 @@ describe('AppModule', () => {
     try {
       expect(module.get(AppModule)).toBeInstanceOf(AppModule);
       expect(module.get(ConfigConsumer).config).toBe(module.get(RUNTIME_CONFIG));
-      expect(module.get(ConfigConsumer).config).toEqual({
+      expect(module.get(ConfigConsumer).config).toMatchObject({
         appEnv: 'test', port: 3000, apiPrefix: '/api/v1',
         databaseUrl: 'postgresql://localhost/aquaku_test',
       });
+      expect(module.get(ConfigConsumer).config.jwtAccessSecret)
+        .not.toBe(module.get(ConfigConsumer).config.jwtRefreshSecret);
     } finally {
       await module.close();
     }

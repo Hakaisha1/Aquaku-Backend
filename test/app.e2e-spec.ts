@@ -48,6 +48,7 @@ describe.each([
   beforeAll(async () => {
     const config = validateConfig({
       APP_ENV: 'production', DATABASE_URL: 'postgresql://localhost/aquaku_test',
+      JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
       ...(origin === undefined ? {} : { CORS_ORIGIN: origin }),
     });
     const module = await Test.createTestingModule({
