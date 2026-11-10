@@ -64,6 +64,10 @@ export class CreateListingDto {
   @ArrayMaxSize(8)
   @IsUUID('4', { each: true })
   photo_ids!: string[];
+
+  @IsOptional()
+  @IsUUID()
+  cooldown_pass_id?: string;
 }
 
 export class UpdateListingDto {

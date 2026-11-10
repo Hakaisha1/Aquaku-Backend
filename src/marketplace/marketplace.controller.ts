@@ -130,6 +130,15 @@ export class MarketplaceController {
     return { data: await this.marketplace.renewListing(user, listingId) };
   }
 
+  @Post('listings/:listingId/reactivate')
+  @UseGuards(AccessTokenGuard, VerifiedPhoneGuard)
+  async reactivateListing(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('listingId', new ParseUUIDPipe()) listingId: string,
+  ) {
+    return { data: await this.marketplace.reactivateListing(user, listingId) };
+  }
+
   @Get('me/quota')
   @UseGuards(AccessTokenGuard)
   async getQuota(@CurrentUser() user: AuthenticatedUser) {

@@ -28,6 +28,14 @@ function setup(overrides: { tier?: Tier; tierExpiresAt?: Date | null; cooldown?:
       findUnique: jest.fn().mockResolvedValue(currentAccount),
       update: jest.fn().mockResolvedValue({}),
     },
+    slotAddonGrant: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      aggregate: jest.fn().mockResolvedValue({ _sum: { slots: null } }),
+    },
+    cooldownPass: {
+      count: jest.fn().mockResolvedValue(0),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
     listing: {
       findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(overrides.count ?? 0),

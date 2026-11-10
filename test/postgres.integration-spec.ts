@@ -68,6 +68,7 @@ describe('PostgreSQL integration', () => {
     `;
     expect(rows).toEqual(expect.arrayContaining([
       { migration_name: '20261108000000_initialize_schema' },
+      { migration_name: '20261110100000_membership_addons_admin' },
     ]));
   });
 
@@ -355,6 +356,243 @@ describe('PostgreSQL integration', () => {
         .toBeGreaterThan(Date.now() + 6 * 86_400_000);
     } finally {
       if (userId) await prisma.user.delete({ where: { id: userId } });
+    }
+  });
+
+  it('reviews private membership and add-on proofs, verifies shops, and suspends/restores listings after downgrade', async () => {
+    const createVerifiedSession = async (displayName: string) => {
+      const email = `${randomUUID()}@example.com`;
+      const registration = await request(app.getHttpServer())
+        .post('/api/v1/auth/register')
+        .send({
+          email,
+          password: 'correct horse battery staple',
+          display_name: displayName,
+          phone_number: `0812${randomInt(10_000_000, 99_999_999)}`,
+        })
+        .expect(201);
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email, password: 'correct horse battery staple' })
+        .expect(200);
+      const accessToken = login.body.data.access_token as string;
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/verify-phone')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ code: registration.body.development_otp as string })
+        .expect(200);
+      return { id: registration.body.data.id as string, accessToken };
+    };
+
+    let ownerId: string | undefined;
+    let adminId: string | undefined;
+    try {
+      const owner = await createVerifiedSession('M4 Membership Seller');
+      ownerId = owner.id;
+      const admin = await createVerifiedSession('M4 Admin Reviewer');
+      adminId = admin.id;
+      await prisma.user.update({ where: { id: admin.id }, data: { role: 'ADMIN' } });
+
+      const plans = await request(app.getHttpServer()).get('/api/v1/marketplace/membership/plans').expect(200);
+      expect(plans.body.data).toEqual(expect.arrayContaining([
+        expect.objectContaining({ tier: 'toko', price: 40_000 }),
+        expect.objectContaining({ tier: 'juragan', price: 100_000 }),
+      ]));
+
+      const pdfProof = Buffer.from('%PDF-1.7 membership proof');
+      const membership = await request(app.getHttpServer())
+        .post('/api/v1/marketplace/me/membership-requests')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('tier', 'TOKO')
+        .field('payment_amount', '40000')
+        .attach('proof', pdfProof, { filename: 'receipt.pdf', contentType: 'application/pdf' })
+        .expect(201);
+      const requestId = membership.body.data.id as string;
+      expect(membership.body.data).toMatchObject({ status: 'pending', proof_available: true });
+      expect(membership.body.data).not.toHaveProperty('proof_bytes');
+      await request(app.getHttpServer())
+        .get(`/api/v1/marketplace/admin/benefit-requests/${requestId}/proof`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get('/api/v1/marketplace/admin/benefit-requests?status=PENDING')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: requestId })]));
+          expect(JSON.stringify(body)).not.toContain('proof_bytes');
+        });
+      const proofDownload = await request(app.getHttpServer())
+        .get(`/api/v1/marketplace/admin/benefit-requests/${requestId}/proof`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      expect(proofDownload.headers['content-type']).toContain('application/pdf');
+      expect(proofDownload.headers['cache-control']).toContain('no-store');
+
+      const reviews = await Promise.all([1, 2].map(() => request(app.getHttpServer())
+        .post(`/api/v1/marketplace/admin/benefit-requests/${requestId}/review`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ decision: 'APPROVED' })));
+      expect(reviews.map((result) => result.status)).toEqual([201, 201]);
+      const activeMembership = await prisma.user.findUniqueOrThrow({ where: { id: owner.id } });
+      expect(activeMembership.tier).toBe('TOKO');
+      expect(activeMembership.tierExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 29 * 86_400_000);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/marketplace/shops')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ name: 'Verified Integration Shop' })
+        .expect(201);
+      const verification = await request(app.getHttpServer())
+        .post('/api/v1/marketplace/me/shops/verification-requests')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/admin/benefit-requests/${verification.body.data.id as string}/review`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ decision: 'APPROVED', review_note: 'Shop profile reviewed' })
+        .expect(201);
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: owner.id } })).verifiedStore).toBe(true);
+
+      const jpgProof = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01]);
+      const slotRequest = await request(app.getHttpServer())
+        .post('/api/v1/marketplace/me/addon-requests')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('kind', 'SLOT_ADDON')
+        .field('payment_amount', '20000')
+        .field('slots', '2')
+        .attach('proof', jpgProof, { filename: 'receipt.jpg', contentType: 'image/jpeg' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/admin/benefit-requests/${slotRequest.body.data.id as string}/review`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ decision: 'APPROVED', approved_slots: 3 })
+        .expect(201);
+
+      const passRequest = await request(app.getHttpServer())
+        .post('/api/v1/marketplace/me/addon-requests')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('kind', 'COOLDOWN_BYPASS')
+        .field('payment_amount', '10000')
+        .attach('proof', jpgProof, { filename: 'pass.jpg', contentType: 'image/jpeg' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/admin/benefit-requests/${passRequest.body.data.id as string}/review`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ decision: 'APPROVED' })
+        .expect(201);
+      const entitlements = await request(app.getHttpServer())
+        .get('/api/v1/marketplace/me/entitlements')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200);
+      expect(entitlements.body.data).toMatchObject({ addon_slots: 3, available_cooldown_passes: 1 });
+
+      const cooldownUntil = new Date(Date.now() + 86_400_000);
+      await prisma.user.update({
+        where: { id: owner.id },
+        data: { tier: 'PERSONAL', tierExpiresAt: null, personalCooldownUntil: cooldownUntil },
+      });
+      const regions = await prisma.region.findFirstOrThrow();
+      const category = await prisma.category.findFirstOrThrow();
+      const photoIds: string[] = [];
+      for (let index = 0; index < 3; index += 1) {
+        const photo = await prisma.mediaAsset.create({
+          data: {
+            ownerId: owner.id,
+            publicId: `m4_${owner.id.replaceAll('-', '')}_${randomUUID().replaceAll('-', '')}`,
+            signedAt: new Date(),
+            uploadedAt: new Date(),
+            secureUrl: 'https://example.test/private-test-photo.webp',
+            format: 'webp',
+            bytes: 1024,
+          },
+        });
+        photoIds.push(photo.id);
+      }
+      const listingResponse = await request(app.getHttpServer())
+        .post('/api/v1/marketplace/listings')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({
+          category_id: category.id,
+          region_code: regions.code,
+          title: 'Cooldown pass test listing',
+          description: 'A test listing created using one approved cooldown pass.',
+          price: 1000,
+          condition: 'SECOND',
+          photo_ids: photoIds,
+          cooldown_pass_id: entitlements.body.data.available_cooldown_passes === 1
+            ? (await prisma.cooldownPass.findFirstOrThrow({ where: { userId: owner.id } })).id
+            : undefined,
+        })
+        .expect(201);
+      const listingId = listingResponse.body.data.id as string;
+      const pass = await prisma.cooldownPass.findFirstOrThrow({ where: { userId: owner.id } });
+      expect(pass.consumedAt).toBeInstanceOf(Date);
+
+      const now = new Date();
+      await prisma.slotAddonGrant.updateMany({
+        where: { userId: owner.id },
+        data: { expiresAt: new Date(now.getTime() - 1000) },
+      });
+      await prisma.user.update({
+        where: { id: owner.id },
+        data: { tier: 'TOKO', tierExpiresAt: new Date(now.getTime() - 1000), personalCooldownUntil: null },
+      });
+      const conditionListing = await prisma.listing.create({
+        data: {
+          sellerId: owner.id,
+          categoryId: category.id,
+          regionCode: regions.code,
+          title: 'New condition listing to suspend',
+          description: 'This listing must be suspended after paid membership expires.',
+          price: 2000,
+          condition: 'NEW',
+          expiresAt: new Date(now.getTime() + 30 * 86_400_000),
+          createdAt: new Date(now.getTime() - 10 * 86_400_000),
+        },
+      });
+      for (let index = 0; index < 6; index += 1) {
+        await prisma.listing.create({
+          data: {
+            sellerId: owner.id,
+            categoryId: category.id,
+            regionCode: regions.code,
+            title: `Second listing ${index}`,
+            description: 'Eligible listing for deterministic quota downgrade handling.',
+            price: 3000 + index,
+            condition: 'SECOND',
+            expiresAt: new Date(now.getTime() + 30 * 86_400_000),
+            createdAt: new Date(now.getTime() - (9 - index) * 86_400_000),
+          },
+        });
+      }
+      const marketplace = app.get(MarketplaceService);
+      await marketplace.expireDueListings();
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: owner.id } })).tier).toBe('PERSONAL');
+      expect((await prisma.listing.findUniqueOrThrow({ where: { id: conditionListing.id } })).suspensionReason)
+        .toBe('TIER_CONDITION');
+      const downgradedActiveCount = await prisma.listing.count({
+        where: { sellerId: owner.id, status: 'ACTIVE', deletedAt: null },
+      });
+      expect(downgradedActiveCount).toBe(5);
+      const downgradedListing = await prisma.listing.findUniqueOrThrow({ where: { id: listingId } });
+      expect(downgradedListing.status).toBe('INACTIVE');
+      expect(downgradedListing.suspensionReason).toBe('QUOTA');
+      const oldExpiry = downgradedListing.expiresAt;
+
+      await prisma.user.update({
+        where: { id: owner.id },
+        data: { tier: 'TOKO', tierExpiresAt: new Date(Date.now() + 30 * 86_400_000) },
+      });
+      const reactivated = await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/listings/${listingId}/reactivate`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(201);
+      expect(reactivated.body.data.status).toBe('active');
+      expect(new Date(reactivated.body.data.expires_at as string).getTime()).toBeGreaterThan(oldExpiry.getTime());
+    } finally {
+      if (ownerId) await prisma.user.delete({ where: { id: ownerId } });
+      if (adminId) await prisma.user.delete({ where: { id: adminId } });
     }
   });
 

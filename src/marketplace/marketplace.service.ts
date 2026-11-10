@@ -319,7 +319,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
       await this.processDueListings(tx, account, now);
       account = await this.getAccount(user.id, tx);
       const tier = this.effectiveTier(account, now);
-      this.assertNoCooldown(account, tier, now);
+      await this.assertNoCooldownOrConsumePass(tx, account, tier, now, input.cooldown_pass_id);
       await this.assertCapacity(tx, account.id, tier, now);
       const [category, region] = await Promise.all([
         tx.category.findFirst({ where: { id: input.category_id, active: true } }),
@@ -455,18 +455,65 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
       await this.processDueListings(tx, account, now);
       account = await this.getAccount(user.id, tx);
       const listing = await tx.listing.findFirst({
-        where: { id: listingId, sellerId: user.id, status: ListingStatus.ACTIVE, deletedAt: null, expiresAt: { gt: now } },
-        select: { id: true },
+        where: {
+          id: listingId,
+          sellerId: user.id,
+          status: { in: [ListingStatus.ACTIVE, ListingStatus.INACTIVE] },
+          deletedAt: null,
+        },
+        select: { id: true, status: true },
       });
       if (!listing) throw new NotFoundException();
       const tier = this.effectiveTier(account, now);
       await tx.listing.update({ where: { id: listingId }, data: { deletedAt: now } });
+      if (listing.status === ListingStatus.INACTIVE) return { id: listingId, deleted: true };
       if (tier === Tier.PERSONAL) {
         const current = this.cooldownActive(account, now) ? account.personalCooldownUntil! : now;
         const cooldownUntil = new Date(Math.max(current.getTime(), now.getTime() + 2 * 86_400_000));
         await tx.user.update({ where: { id: user.id }, data: { personalCooldownUntil: cooldownUntil } });
       }
       return { id: listingId, deleted: true };
+    });
+  }
+
+  async reactivateListing(user: AuthenticatedUser, listingId: string) {
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockAccount(tx, user.id);
+      let account = await this.getAccount(user.id, tx);
+      await this.processDueListings(tx, account, now);
+      account = await this.getAccount(user.id, tx);
+      const tier = this.effectiveTier(account, now);
+      this.assertNoCooldown(account, tier, now);
+      const listing = await tx.listing.findFirst({
+        where: { id: listingId, sellerId: user.id, status: ListingStatus.INACTIVE, deletedAt: null },
+        include: { photos: { where: { uploadedAt: { not: null } } } },
+      });
+      if (!listing || !listing.suspendedAt || !listing.suspensionReason) throw new NotFoundException();
+      const remainingMilliseconds = listing.expiresAt.getTime() - listing.suspendedAt.getTime();
+      if (remainingMilliseconds <= 0) {
+        await tx.listing.update({
+          where: { id: listing.id },
+          data: { status: ListingStatus.EXPIRED, suspendedAt: null, suspensionReason: null },
+        });
+        return { id: listing.id, status: 'expired' };
+      }
+      await this.assertCapacity(tx, account.id, tier, now);
+      await this.assertConditionAllowed(tx, tier, listing.condition);
+      if (listing.photos.length < minimumPhotos(listing.condition)) {
+        throw new ConflictException('The listing no longer meets its minimum photo requirement');
+      }
+      const updated = await tx.listing.update({
+        where: { id: listing.id },
+        data: {
+          status: ListingStatus.ACTIVE,
+          expiresAt: new Date(now.getTime() + remainingMilliseconds),
+          suspendedAt: null,
+          suspensionReason: null,
+        },
+        include: listingInclude,
+      });
+      return this.presentListing(updated);
     });
   }
 
@@ -512,17 +559,26 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
       const active = await tx.listing.count({
         where: { sellerId: user.id, status: ListingStatus.ACTIVE, deletedAt: null, expiresAt: { gt: now } },
       });
+      const addonSlots = await this.getActiveAddonSlots(tx, user.id, now);
+      const quota = tierPolicy[tier].quota + addonSlots;
+      const cooldownActive = tier === Tier.PERSONAL && this.cooldownActive(account, now);
+      const availablePasses = await tx.cooldownPass.count({
+        where: { userId: user.id, expiresAt: { gt: now }, consumedAt: null },
+      });
       return {
         tier: tier.toLowerCase(),
         active_listings: active,
+        inactive_listings: await tx.listing.count({
+          where: { sellerId: user.id, status: ListingStatus.INACTIVE, deletedAt: null },
+        }),
         base_quota: tierPolicy[tier].quota,
-        addon_slots: 0,
-        available_slots: Math.max(0, tierPolicy[tier].quota - active),
-        cooldown_until: tier === Tier.PERSONAL && this.cooldownActive(account, now)
-          ? account.personalCooldownUntil
-          : null,
-        may_list: active < tierPolicy[tier].quota &&
-          (tier !== Tier.PERSONAL || !this.cooldownActive(account, now)),
+        addon_slots: addonSlots,
+        total_quota: quota,
+        available_slots: Math.max(0, quota - active),
+        available_cooldown_passes: availablePasses,
+        cooldown_until: cooldownActive ? account.personalCooldownUntil : null,
+        may_list: active < quota && !cooldownActive,
+        may_list_with_cooldown_pass: active < quota && (availablePasses > 0 || !cooldownActive),
       };
     });
   }
@@ -533,17 +589,41 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
     let expiredCount = 0;
     try {
       const now = new Date();
-      const due = await this.prisma.listing.findMany({
-        where: { status: ListingStatus.ACTIVE, deletedAt: null, expiresAt: { lte: now } },
-        select: { id: true, sellerId: true },
-        orderBy: { expiresAt: 'asc' },
-        take: 100,
-      });
-      for (const candidate of due) {
+      const [due, accountsWithExpiringRights] = await Promise.all([
+        this.prisma.listing.findMany({
+          where: { status: ListingStatus.ACTIVE, deletedAt: null, expiresAt: { lte: now } },
+          select: { id: true, sellerId: true },
+          orderBy: { expiresAt: 'asc' },
+          take: 100,
+        }),
+        this.prisma.user.findMany({
+          where: {
+            OR: [
+              { tier: { not: Tier.PERSONAL }, tierExpiresAt: { lte: now } },
+              { slotAddonGrants: { some: { expiresAt: { lte: now }, endedAt: null } } },
+            ],
+          },
+          select: { id: true },
+          take: 100,
+        }),
+      ]);
+      const ownerIds = new Set([
+        ...due.map((candidate) => candidate.sellerId),
+        ...accountsWithExpiringRights.map((account) => account.id),
+      ]);
+      for (const ownerId of ownerIds) {
+        const listingIds = due.filter((candidate) => candidate.sellerId === ownerId).map((candidate) => candidate.id);
         const changed = await this.prisma.$transaction(async (tx) => {
-          await this.lockAccount(tx, candidate.sellerId);
-          const account = await this.getAccount(candidate.sellerId, tx);
-          const affected = await this.processDueListings(tx, account, now, candidate.id);
+          await this.lockAccount(tx, ownerId);
+          const account = await this.getAccount(ownerId, tx);
+          let affected = 0;
+          if (listingIds.length) {
+            for (const listingId of listingIds) {
+              affected += await this.processDueListings(tx, account, now, listingId);
+            }
+          } else {
+            affected += await this.processDueListings(tx, account, now);
+          }
           return affected;
         });
         expiredCount += changed;
@@ -571,37 +651,130 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
       select: { id: true },
       orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
     });
-    if (due.length === 0) return 0;
     const tier = this.effectiveTier(account, now);
-    let activeCount = await tx.listing.count({
-      where: { sellerId: account.id, status: ListingStatus.ACTIVE, deletedAt: null },
-    });
-    let cooldownUntil = account.personalCooldownUntil;
-    for (const candidate of due) {
-      const changed = await tx.listing.updateMany({
-        where: { id: candidate.id, status: ListingStatus.ACTIVE, deletedAt: null },
-        data: { status: ListingStatus.EXPIRED },
+    let expiredCount = 0;
+    if (due.length > 0) {
+      let activeCount = await tx.listing.count({
+        where: { sellerId: account.id, status: ListingStatus.ACTIVE, deletedAt: null },
       });
-      if (changed.count === 0) continue;
-      if (
-        tier === Tier.PERSONAL && activeCount >= tierPolicy[tier].quota &&
-        (cooldownUntil === null || cooldownUntil <= now)
-      ) {
-        cooldownUntil = new Date(now.getTime() + 7 * 86_400_000);
+      const quota = tierPolicy[tier].quota + await this.getActiveAddonSlots(tx, account.id, now);
+      let cooldownUntil = account.personalCooldownUntil;
+      for (const candidate of due) {
+        const changed = await tx.listing.updateMany({
+          where: { id: candidate.id, status: ListingStatus.ACTIVE, deletedAt: null },
+          data: { status: ListingStatus.EXPIRED },
+        });
+        if (changed.count === 0) continue;
+        expiredCount += changed.count;
+        if (
+          tier === Tier.PERSONAL && activeCount >= quota &&
+          (cooldownUntil === null || cooldownUntil <= now)
+        ) {
+          cooldownUntil = new Date(now.getTime() + 7 * 86_400_000);
+        }
+        activeCount -= 1;
       }
-      activeCount -= 1;
+      if (cooldownUntil !== account.personalCooldownUntil) {
+        await tx.user.update({ where: { id: account.id }, data: { personalCooldownUntil: cooldownUntil } });
+      }
     }
-    if (cooldownUntil !== account.personalCooldownUntil) {
-      await tx.user.update({ where: { id: account.id }, data: { personalCooldownUntil: cooldownUntil } });
-    }
-    return due.length;
+    await this.reconcileAccountListings(tx, account.id, now);
+    return expiredCount;
   }
 
   private async assertCapacity(tx: MarketplaceTransaction, sellerId: string, tier: Tier, now: Date) {
-    const count = await tx.listing.count({
-      where: { sellerId, status: ListingStatus.ACTIVE, deletedAt: null, expiresAt: { gt: now } },
+    const [count, addonSlots] = await Promise.all([
+      tx.listing.count({
+        where: { sellerId, status: ListingStatus.ACTIVE, deletedAt: null, expiresAt: { gt: now } },
+      }),
+      this.getActiveAddonSlots(tx, sellerId, now),
+    ]);
+    if (count >= tierPolicy[tier].quota + addonSlots) {
+      throw new ConflictException('Active listing quota is full');
+    }
+  }
+
+  private async getActiveAddonSlots(tx: MarketplaceTransaction, userId: string, now: Date): Promise<number> {
+    const result = await tx.slotAddonGrant.aggregate({
+      where: { userId, expiresAt: { gt: now }, endedAt: null },
+      _sum: { slots: true },
     });
-    if (count >= tierPolicy[tier].quota) throw new ConflictException('Active listing quota is full');
+    return result._sum.slots ?? 0;
+  }
+
+  private async assertNoCooldownOrConsumePass(
+    tx: MarketplaceTransaction,
+    account: AccountState,
+    tier: Tier,
+    now: Date,
+    passId?: string,
+  ) {
+    const cooldownActive = tier === Tier.PERSONAL && this.cooldownActive(account, now);
+    if (!cooldownActive) {
+      if (passId) throw new BadRequestException('A cooldown pass can only be used during an active cooldown');
+      return;
+    }
+    if (!passId) {
+      this.assertNoCooldown(account, tier, now);
+      return;
+    }
+    const consumed = await tx.cooldownPass.updateMany({
+      where: {
+        id: passId,
+        userId: account.id,
+        consumedAt: null,
+        expiresAt: { gt: now },
+        request: { status: 'APPROVED' },
+      },
+      data: { consumedAt: now },
+    });
+    if (consumed.count !== 1) throw new ConflictException('Cooldown pass is unavailable or already used');
+  }
+
+  private async reconcileAccountListings(tx: MarketplaceTransaction, userId: string, now: Date) {
+    await tx.slotAddonGrant.updateMany({
+      where: { userId, expiresAt: { lte: now }, endedAt: null },
+      data: { endedAt: now },
+    });
+    const account = await this.getAccount(userId, tx);
+    let tier = this.effectiveTier(account, now);
+    if (account.tier !== Tier.PERSONAL && tier === Tier.PERSONAL) {
+      await tx.user.update({ where: { id: userId }, data: { tier: Tier.PERSONAL, tierExpiresAt: null } });
+      tier = Tier.PERSONAL;
+    }
+    const addonSlots = await this.getActiveAddonSlots(tx, userId, now);
+    const quota = tierPolicy[tier].quota + addonSlots;
+    const activeListings = await tx.listing.findMany({
+      where: { sellerId: userId, status: ListingStatus.ACTIVE, deletedAt: null, expiresAt: { gt: now } },
+      select: { id: true, condition: true, createdAt: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    const conditionRestricted = tier === Tier.PERSONAL
+      ? activeListings.filter((listing) => listing.condition === ListingCondition.BNIB || listing.condition === ListingCondition.NEW)
+      : [];
+    for (const listing of conditionRestricted) {
+      await tx.listing.update({
+        where: { id: listing.id },
+        data: {
+          status: ListingStatus.INACTIVE,
+          suspendedAt: now,
+          suspensionReason: 'TIER_CONDITION',
+        },
+      });
+    }
+    const eligible = activeListings.filter((listing) => !conditionRestricted.some((item) => item.id === listing.id));
+    const overQuota = Math.max(0, eligible.length - quota);
+    const quotaRestricted = overQuota > 0 ? eligible.slice(-overQuota).reverse() : [];
+    for (const listing of quotaRestricted) {
+      await tx.listing.update({
+        where: { id: listing.id },
+        data: {
+          status: ListingStatus.INACTIVE,
+          suspendedAt: now,
+          suspensionReason: 'QUOTA',
+        },
+      });
+    }
   }
 
   private async assertConditionAllowed(tx: MarketplaceTransaction, tier: Tier, condition: ListingCondition) {
@@ -717,16 +890,26 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
           : null,
       },
       expires_at: listing.expiresAt,
+      suspended_at: listing.suspendedAt,
+      suspension_reason: listing.suspensionReason?.toLowerCase() ?? null,
       created_at: listing.createdAt,
       updated_at: listing.updatedAt,
     };
   }
 
-  private presentShop(shop: { id: string; name: string; description: string | null; createdAt: Date; updatedAt: Date }) {
+  private presentShop(shop: {
+    id: string;
+    name: string;
+    description: string | null;
+    verificationStatus: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
     return {
       id: shop.id,
       name: shop.name,
       description: shop.description,
+      verification_status: shop.verificationStatus.toLowerCase(),
       created_at: shop.createdAt,
       updated_at: shop.updatedAt,
     };

@@ -95,7 +95,7 @@ Forum tidak dibatasi oleh membership berbayar. Membership membedakan hak berjual
 | Cooldown Personal | Berlaku | Tidak berlaku selama membership aktif | Tidak berlaku selama membership aktif |
 | Menjual barang BNIB/New | Tidak | Ya | Ya |
 
-Harga dan batas di atas boleh dipakai sebagai nilai awal implementasi MVP, tetapi masih merupakan hipotesis bisnis yang perlu divalidasi.
+- Harga dan batas di atas boleh dipakai sebagai nilai awal implementasi MVP, tetapi masih merupakan hipotesis bisnis yang perlu divalidasi.
 
 ### Pembayaran dan masa berlaku
 
@@ -105,7 +105,7 @@ Harga dan batas di atas boleh dipakai sebagai nilai awal implementasi MVP, tetap
 - Masa membership dihitung **30 hari sejak verifikasi/persetujuan admin**, bukan mengikuti awal/akhir bulan kalender.
 - Midtrans merupakan rencana integrasi berikutnya, bukan bagian tahap fondasi.
 
-Aturan perpanjangan lebih awal, upgrade saat periode masih aktif, serta prorata belum ditentukan.
+Perpanjangan tier yang sama yang disetujui sebelum masa aktif habis menambahkan 30 hari dari tanggal kedaluwarsa saat ini. Jika membership sudah habis, masa baru dimulai saat persetujuan. Upgrade ke tier lebih tinggi berlaku segera sejak persetujuan dengan periode 30 hari baru; tidak ada prorata/refund dan sisa waktu tier lama tidak dibawa.
 
 ## 6. Listing dan validasi
 
@@ -127,10 +127,10 @@ Aturan tambahan:
 - Kategori awal yang di-seed: Tanaman air, Hewan air, Peralatan, Hardscape, Akuarium, dan Lainnya. Kondisi merupakan tag terkontrol; daftar awal BNIB, Baru, Like New, dan Second.
 - Filter listing mencakup teks judul/deskripsi, kategori, kondisi, rentang harga, kecamatan/kelurahan; urutan tersedia berdasarkan terbaru atau harga. Pagination default 20 dan maksimal 50 item.
 - Listing aktif berlaku 30 hari untuk Personal, 60 hari untuk Toko, dan 90 hari untuk Juragan. Masa membership berbayar harus aktif agar tier berbayar berlaku.
-- Status listing yang tersimpan adalah Active, Sold, dan Expired. Penghapusan penjual memakai soft delete dan tidak tampil di publik atau dihitung dalam kuota; foto listing arsip dipertahankan. Listing Sold tidak dapat diaktifkan kembali.
+- Status listing yang tersimpan adalah Active, Sold, Expired, dan Inactive (penangguhan sistem). Penghapusan penjual memakai soft delete dan tidak tampil di publik atau dihitung dalam kuota; foto listing arsip dipertahankan. Listing Sold tidak dapat diaktifkan kembali.
 - Perpanjangan hanya untuk listing Expired, berlaku dari waktu permintaan setelah validasi ulang. Listing aktif tidak dapat diperpanjang lebih awal.
 - Job kedaluwarsa berjalan per menit, idempoten, dan memproses batch. Pemasangan, pengaktifan ulang, penjualan, kedaluwarsa, dan penghapusan memakai transaksi serta lock per akun agar kuota/cooldown konsisten terhadap request bersamaan.
-- Kuota M3 memakai kapasitas dasar tier. Struktur response menyiapkan kapasitas add-on; pembelian/pemberian add-on belum aktif sampai M4.
+- Kuota listing adalah kapasitas dasar tier ditambah slot add-on yang masih berlaku. Grant slot berjalan terpisah selama 30 hari dan slot dapat dipakai ulang.
 - Listing yang sudah terjual tidak diubah kembali menjadi tersedia hanya untuk menghindari aturan pemasangan.
 
 ## 7. Cooldown Personal
@@ -150,6 +150,7 @@ Kuota dan cooldown adalah dua pemeriksaan terpisah. Pengguna perlu slot kosong *
 | Listing terjual/kedaluwarsa saat kuota sebelumnya belum penuh | Tidak memulai cooldown 7 hari |
 | Penjualan/kedaluwarsa berikutnya selama cooldown yang sama | Tidak mengulang hitungan 7 hari |
 | Pengguna menghapus listing yang masih aktif | Memicu cooldown 2 hari, meskipun kuota belum penuh |
+| Pengguna menghapus listing Inactive yang ditangguhkan sistem | Soft delete tanpa cooldown tambahan |
 | Pengguna menghapus arsip listing terjual/kedaluwarsa | Tidak memicu cooldown tambahan |
 
 Jika ada cooldown lama lalu terjadi penghapusan listing aktif, waktu selesai menjadi waktu yang paling akhir antara cooldown lama dan dua hari sejak penghapusan. Cooldown baru tidak boleh memperpendek cooldown lama.
@@ -171,7 +172,8 @@ Jika ada cooldown lama lalu terjadi penghapusan listing aktif, waktu selesai men
 | Memperpanjang listing kedaluwarsa | Tidak |
 | Mengubah detail listing yang masih aktif | Ya, tetap mengikuti validasi dan tanpa mereset masa tayang |
 | Menandai listing terjual | Ya |
-| Menghapus listing | Ya, dengan konsekuensi cooldown di atas |
+| Menghapus listing aktif | Ya, dengan konsekuensi cooldown di atas |
+| Menghapus listing Inactive | Ya, tanpa cooldown tambahan |
 | Menggunakan forum dan beraktivitas sebagai pembeli | Ya, sesuai hak akses akun |
 
 Listing aktif tetap mengikuti jadwal kedaluwarsanya. Toko/Juragan dengan membership aktif tidak terkena cooldown Personal.
@@ -188,11 +190,11 @@ Listing aktif tetap mengikuti jadwal kedaluwarsanya. Toko/Juragan dengan members
 
 ### Lewati cooldown
 
-- Bersifat sekali pakai.
-- Mengakhiri cooldown saat digunakan.
-- Tidak menambah kapasitas listing.
+- Berlaku 30 hari sejak persetujuan dan bersifat sekali pakai.
+- Mengakhiri cooldown saat digunakan pada request pembuatan listing yang berhasil.
+- Tidak menambah kapasitas listing dan harus dipilih eksplisit melalui `cooldown_pass_id`.
 
-Harga/paket slot, aturan penumpukan beberapa add-on, dan mekanisme penggunaan add-on lewati cooldown belum difinalkan.
+Harga add-on belum ditetapkan dan tidak di-hardcode; pemohon mengisi nominal transfer dan admin menetapkan jumlah slot yang disetujui. Jumlah permintaan slot dibatasi 1–1000 demi batas operasional MVP. Setiap persetujuan kapasitas membuat grant terpisah 30 hari; kapasitas aktif dijumlahkan dan masa tiap grant berjalan sendiri. Add-on lewati cooldown berlaku 30 hari, dipilih eksplisit saat membuat listing selama cooldown, dan baru terpakai jika pembuatan listing berhasil.
 
 ## 9. Membership/add-on habis dan penonaktifan
 
@@ -203,7 +205,15 @@ Harga/paket slot, aturan penumpukan beberapa add-on, dan mekanisme penggunaan ad
 - Berakhirnya add-on memakai prinsip penonaktifan yang sama jika jumlah listing aktif melebihi kapasitas baru.
 - Pengaktifan ulang tidak otomatis melewati validasi tier, kuota, cooldown, foto, atau masa tayang.
 
-**Belum diputuskan:** urutan pemilihan listing jika jumlah listing yang memenuhi syarat masih melebihi kuota; apakah pengaktifan ulang dilakukan manual/otomatis setelah hak kembali; serta apakah penonaktifan oleh sistem memicu cooldown. Jangan menyamakan penonaktifan sistem dengan penghapusan oleh pengguna tanpa keputusan tambahan.
+Saat hak berkurang, listing BNIB/New dinonaktifkan lebih dulu jika tier menjadi Personal. Jika listing lain masih melebihi kuota, listing yang paling baru dibuat dinonaktifkan sampai kuota sesuai; listing lama diprioritaskan. Status Inactive menyimpan alasan dan waktu penonaktifan sistem serta membekukan sisa masa tayang. Pengaktifan ulang dilakukan manual setelah hak kembali dan tetap memeriksa tier, kuota, foto, dan cooldown. Penonaktifan otomatis tidak memicu cooldown.
+
+### Pengajuan, bukti transfer, dan verifikasi toko
+
+- Pengajuan membership/add-on wajib menyertakan bukti transfer JPEG/PNG/PDF maksimal 5 MB. Isi bukti disimpan privat di PostgreSQL dan hanya dapat diunduh admin; endpoint daftar tidak menyertakan isi berkas.
+- Satu pengajuan Pending per akun dan jenis manfaat. Setelah ditolak, pengguna boleh mengajukan ulang.
+- Harga membership harus sama dengan katalog; harga add-on tidak ditetapkan sistem dan diverifikasi manual oleh admin.
+- Penolakan wajib mencatat alasan. Reviewer, waktu, keputusan, alasan, serta hak yang diberikan disimpan pada pengajuan; keputusan final idempoten.
+- Verifikasi toko adalah badge kepercayaan manual, bukan syarat untuk hak tier. MVP tidak meminta dokumen identitas resmi.
 
 ## 10. Transaksi dan rating
 
@@ -275,7 +285,7 @@ Draft endpoint mark-sold/rating perlu disesuaikan saat modul transaksi dibuat. A
 ## 13. Penyesuaian dokumentasi dan pengujian
 
 - `openapi.yaml` adalah kontrak API yang dipublikasikan dan diperbarui bersama implementasi. Draft `openapi-aquascape.yaml` lokal tetap hanya referensi dan tidak tersedia dalam clone.
-- Kontrak akan diperbarui lagi saat M4/M5 menambahkan status penonaktifan sistem, membership/add-on, konfirmasi transaksi, rating, dan aturan terkait.
+- Kontrak akan diperbarui lagi saat M5 menambahkan konfirmasi transaksi, rating, dan aturan terkait.
 - Uji batas waktu cooldown/membership/add-on, penurunan hak akun, otorisasi, dan konsistensi kuota.
 - Kredensial asli, OTP pengguna nyata, dan secret tidak boleh masuk Git atau log production.
 - Pembuatan dokumen ini tidak mencakup scaffold aplikasi, commit, atau push.

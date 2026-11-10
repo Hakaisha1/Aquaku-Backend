@@ -18,12 +18,12 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 | M1 | Fondasi NestJS dan PostgreSQL | M0 | Selesai |
 | M2 | Akun, autentikasi, dan OTP development | M1 | Selesai |
 | M3 | Marketplace dan aturan listing | M2; keputusan wilayah dan lifecycle listing | Selesai |
-| M4 | Membership, add-on, dan admin | M3; keputusan lifecycle hak berbayar | Belum dimulai |
+| M4 | Membership, add-on, dan admin | M3; keputusan lifecycle hak berbayar | Selesai |
 | M5 | Konfirmasi transaksi dan kepercayaan | M3; keputusan konfirmasi transaksi | Belum dimulai |
 | M6 | Forum dan MongoDB | M4 dan M5 sebagai prioritas delivery | Belum dimulai |
 | M7 | Kesiapan uji pengguna dan rilis | M4–M6 untuk MVP forum + marketplace | Belum dimulai |
 
-**Posisi saat ini:** M0–M3 selesai. Migrasi marketplace sudah diterapkan ke database development dan database test. Unit, e2e, dan integration test lulus; adapter Cloudinary diuji palsu karena kredensial/preset nyata tidak tersedia di environment. Perubahan sesi ini belum di-commit atau di-push.
+**Posisi saat ini:** M0–M4 selesai. Migrasi M4 sudah diterapkan ke database development dan test; 127 unit test, 63 E2E test, dan 9 PostgreSQL integration test lulus. Build, lint, Prisma validation, serta pemeriksaan TypeScript juga lulus.
 
 ## 3. Checklist dan kriteria selesai
 
@@ -94,17 +94,18 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 
 ### M4 — Membership, add-on, dan admin
 
-- [ ] Finalkan upgrade/perpanjangan membership, add-on bertumpuk, dan penonaktifan saat kuota berkurang.
-- [ ] Implementasikan daftar paket dan pengajuan upgrade dengan bukti transfer.
-- [ ] Implementasikan verifikasi toko serta persetujuan/penolakan admin dengan catatan tindakan.
-- [ ] Aktifkan membership 30 hari dari persetujuan admin.
-- [ ] Implementasikan kapasitas add-on selama 30 hari yang slotnya dapat dipakai ulang.
-- [ ] Implementasikan add-on lewati cooldown sekali pakai, terpisah dari add-on kapasitas.
-- [ ] Implementasikan berakhirnya membership/add-on dan penonaktifan listing yang kehilangan hak.
-- [ ] Pastikan approval/pemakaian add-on tidak dapat diproses ganda atau melampaui hak saat request bersamaan.
-- [ ] Uji batas periode, downgrade, slot berlebih, BNIB/New, dan akses admin.
+- [x] Finalkan upgrade/perpanjangan membership, add-on bertumpuk, dan penonaktifan saat kuota berkurang.
+- [x] Implementasikan daftar paket dan pengajuan upgrade dengan bukti transfer privat.
+- [x] Implementasikan verifikasi toko serta persetujuan/penolakan admin dengan catatan tindakan.
+- [x] Aktifkan membership 30 hari dari persetujuan admin; renewal tier sama menambah 30 hari dari expiry lama.
+- [x] Implementasikan kapasitas add-on selama 30 hari yang slotnya dapat dipakai ulang.
+- [x] Implementasikan add-on lewati cooldown sekali pakai yang hanya dikonsumsi setelah listing berhasil dibuat.
+- [x] Implementasikan berakhirnya membership/add-on, penangguhan deterministik, dan reaktivasi manual yang mempertahankan sisa masa tayang.
+- [x] Lindungi approval/pemakaian add-on dengan lock akun, constraint satu pending, transaksi, dan keputusan approval idempoten.
+- [x] Terapkan migrasi M4 ke database development/test dan jalankan integration test.
+- [x] Uji batas periode, downgrade, slot berlebih, BNIB/New, dan akses admin melalui PostgreSQL integration.
 
-**Selesai jika:** pengajuan → persetujuan admin → hak aktif → hak berakhir berjalan konsisten dan dapat diaudit. Tidak ada integrasi Midtrans atau pembayaran barang pada milestone ini.
+**Selesai jika:** pengajuan → persetujuan admin → hak aktif → hak berakhir berjalan konsisten dan dapat diaudit serta migrasi/integration test M4 lulus. Tidak ada integrasi Midtrans atau pembayaran barang pada milestone ini.
 
 ### M5 — Konfirmasi transaksi dan kepercayaan
 

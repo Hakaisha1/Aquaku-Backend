@@ -23,6 +23,32 @@ enum ListingStatus {
   ACTIVE
   SOLD
   EXPIRED
+  INACTIVE
+}
+
+enum ListingSuspensionReason {
+  TIER_CONDITION
+  QUOTA
+}
+
+enum BenefitRequestKind {
+  MEMBERSHIP
+  SLOT_ADDON
+  COOLDOWN_BYPASS
+  SHOP_VERIFICATION
+}
+
+enum BenefitRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ShopVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
 }
 
 enum ListingCondition {
@@ -53,6 +79,10 @@ model User {
   shop            Shop?
   listings        Listing[]
   mediaAssets     MediaAsset[]
+  benefitRequests BenefitRequest[] @relation("BenefitRequestOwner")
+  reviewedBenefitRequests BenefitRequest[] @relation("BenefitRequestReviewer")
+  slotAddonGrants SlotAddonGrant[]
+  cooldownPasses  CooldownPass[]
   personalCooldownUntil DateTime? @map("personal_cooldown_until") @db.Timestamptz(3)
 
   @@map("users")
@@ -131,10 +161,12 @@ model Shop {
   ownerId     String    @unique @map("owner_id") @db.Uuid
   name        String    @db.VarChar(100)
   description String?   @db.VarChar(500)
+  verificationStatus ShopVerificationStatus @default(UNVERIFIED) @map("verification_status")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   listings    Listing[]
+  benefitRequests BenefitRequest[]
 
   @@map("shops")
 }
@@ -153,6 +185,8 @@ model Listing {
   expiresAt   DateTime                 @map("expires_at") @db.Timestamptz(3)
   soldAt      DateTime?                @map("sold_at") @db.Timestamptz(3)
   deletedAt   DateTime?                @map("deleted_at") @db.Timestamptz(3)
+  suspendedAt DateTime?                @map("suspended_at") @db.Timestamptz(3)
+  suspensionReason ListingSuspensionReason? @map("suspension_reason")
   createdAt   DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
   seller      User                     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
@@ -187,4 +221,63 @@ model MediaAsset {
   @@index([ownerId, listingId])
   @@index([signedAt])
   @@map("media_assets")
+}
+
+model BenefitRequest {
+  id                    String               @id @default(uuid()) @db.Uuid
+  ownerId               String               @map("owner_id") @db.Uuid
+  kind                  BenefitRequestKind
+  status                BenefitRequestStatus @default(PENDING)
+  requestedTier         Tier?                @map("requested_tier")
+  requestedSlots        Int?                 @map("requested_slots")
+  approvedSlots         Int?                 @map("approved_slots")
+  paymentAmount         Int?                 @map("payment_amount")
+  proofBytes            Bytes?               @map("proof_bytes") @db.ByteA
+  proofMimeType         String?              @map("proof_mime_type") @db.VarChar(100)
+  shopId                String?              @map("shop_id") @db.Uuid
+  reviewedById          String?              @map("reviewed_by_id") @db.Uuid
+  reviewNote            String?              @map("review_note") @db.VarChar(500)
+  reviewedAt            DateTime?            @map("reviewed_at") @db.Timestamptz(3)
+  entitlementStartsAt   DateTime?            @map("entitlement_starts_at") @db.Timestamptz(3)
+  entitlementExpiresAt  DateTime?            @map("entitlement_expires_at") @db.Timestamptz(3)
+  createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  owner                 User                 @relation("BenefitRequestOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  reviewer              User?                @relation("BenefitRequestReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  shop                  Shop?                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  slotAddonGrant        SlotAddonGrant?
+  cooldownPass          CooldownPass?
+
+  @@index([ownerId, createdAt])
+  @@index([status, kind, createdAt])
+  @@map("benefit_requests")
+}
+
+model SlotAddonGrant {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  requestId String         @unique @map("request_id") @db.Uuid
+  slots     Int
+  expiresAt DateTime       @map("expires_at") @db.Timestamptz(3)
+  endedAt   DateTime?      @map("ended_at") @db.Timestamptz(3)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request   BenefitRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt, endedAt])
+  @@map("slot_addon_grants")
+}
+
+model CooldownPass {
+  id         String         @id @default(uuid()) @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  requestId  String         @unique @map("request_id") @db.Uuid
+  expiresAt  DateTime       @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime?      @map("consumed_at") @db.Timestamptz(3)
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request    BenefitRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt, consumedAt])
+  @@map("cooldown_passes")
 }

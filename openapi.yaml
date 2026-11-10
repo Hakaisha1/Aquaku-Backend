@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Aquaku Backend API
-  version: 0.3.0
-  description: REST API akun dan marketplace Aquaku. Tier berbayar belum dapat dibeli sebelum M4.
+  version: 0.4.0
+  description: REST API akun, marketplace, membership, add-on, dan administrasi Aquaku.
 servers:
   - url: http://localhost:3000/api/v1
     description: Development
@@ -107,7 +107,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
-      summary: Soft delete listing aktif milik sendiri
+      summary: Soft delete listing aktif atau nonaktif milik sendiri
       responses:
         '200': { description: Listing diarsipkan }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -139,8 +139,143 @@ paths:
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
-        '200': { description: Listing milik sendiri termasuk status Sold dan Expired, content: { application/json: { schema: { $ref: '#/components/schemas/ListingPage' } } } }
+        '200': { description: Listing milik sendiri termasuk status Sold, Expired, dan Inactive, content: { application/json: { schema: { $ref: '#/components/schemas/ListingPage' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /marketplace/listings/{listingId}/reactivate:
+    parameters:
+      - { $ref: '#/components/parameters/ListingId' }
+    post:
+      summary: Aktifkan kembali listing yang dinonaktifkan sistem
+      description: Memerlukan hak tier, kuota, dan cooldown yang sesuai; sisa masa tayang dilanjutkan.
+      responses:
+        '201': { description: Listing diaktifkan kembali }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /marketplace/membership/plans:
+    get:
+      security: []
+      summary: Daftar paket membership berbayar
+      responses:
+        '200':
+          description: Paket Toko dan Juragan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/MembershipPlan' }
+                required: [data]
+  /marketplace/me/membership-requests:
+    post:
+      summary: Ajukan membership atau upgrade
+      description: Transfer manual. Bukti JPEG/PNG/PDF maksimal 5 MB disimpan privat; harga harus sesuai paket.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                tier: { type: string, enum: [TOKO, JURAGAN] }
+                payment_amount: { type: integer, minimum: 1 }
+                proof: { type: string, format: binary }
+              required: [tier, payment_amount, proof]
+      responses:
+        '201': { description: Pengajuan menunggu review admin }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /marketplace/me/addon-requests:
+    post:
+      summary: Ajukan slot tambahan atau lewati cooldown
+      description: Harga add-on belum ditetapkan oleh sistem; admin memeriksa nominal transfer dan menetapkan jumlah slot yang disetujui.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                kind: { type: string, enum: [SLOT_ADDON, COOLDOWN_BYPASS] }
+                payment_amount: { type: integer, minimum: 1 }
+                slots: { type: integer, minimum: 1, maximum: 1000, description: Wajib untuk SLOT_ADDON }
+                proof: { type: string, format: binary }
+              required: [kind, payment_amount, proof]
+      responses:
+        '201': { description: Pengajuan menunggu review admin }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /marketplace/me/shops/verification-requests:
+    post:
+      summary: Minta verifikasi toko manual
+      description: Verifikasi toko memberi badge dan tidak menjadi syarat hak membership.
+      responses:
+        '201': { description: Pengajuan verifikasi toko }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /marketplace/me/benefit-requests:
+    get:
+      summary: Riwayat pengajuan membership, add-on, dan verifikasi toko
+      responses:
+        '200': { description: Riwayat pengajuan milik sendiri; bukti transfer tidak disertakan }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /marketplace/me/entitlements:
+    get:
+      summary: Hak membership, slot add-on, cooldown pass, dan verifikasi toko
+      responses:
+        '200': { description: Hak akun saat ini }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /marketplace/admin/benefit-requests:
+    get:
+      description: Hanya admin. Maksimal 100 pengajuan per respons.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, APPROVED, REJECTED] } }
+      responses:
+        '200': { description: Daftar pengajuan tanpa isi bukti transfer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /marketplace/admin/benefit-requests/{requestId}/proof:
+    get:
+      description: Hanya admin; mengunduh bukti secara privat dengan cache dinonaktifkan.
+      parameters:
+        - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: JPEG, PNG, atau PDF bukti transfer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /marketplace/admin/benefit-requests/{requestId}/review:
+    post:
+      description: Hanya admin. Keputusan final idempoten; penolakan wajib menyertakan alasan.
+      parameters:
+        - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision: { type: string, enum: [APPROVED, REJECTED] }
+                review_note: { type: string, maxLength: 500 }
+                approved_slots: { type: integer, minimum: 1, maximum: 1000, description: Jumlah final untuk pengajuan SLOT_ADDON }
+              required: [decision]
+      responses:
+        '200': { description: Pengajuan ditinjau dan audit tersimpan }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /marketplace/me/quota:
     get:
       summary: Informasi kuota dan cooldown akun
@@ -256,6 +391,39 @@ components:
       required: true
       schema: { type: string, format: uuid }
   schemas:
+    MembershipPlan:
+      type: object
+      properties:
+        tier: { type: string, enum: [toko, juragan] }
+        price: { type: integer, enum: [40000, 100000] }
+        period_days: { type: integer, const: 30 }
+        base_quota: { type: integer }
+        listing_days: { type: integer }
+        features:
+          type: object
+          properties:
+            may_sell_new_condition: { type: boolean }
+            cooldown: { type: boolean }
+          required: [may_sell_new_condition, cooldown]
+      required: [tier, price, period_days, base_quota, listing_days, features]
+    BenefitRequest:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [membership, slot_addon, cooldown_bypass, shop_verification] }
+        status: { type: string, enum: [pending, approved, rejected] }
+        requested_tier: { type: [string, 'null'], enum: [toko, juragan, null] }
+        requested_slots: { type: [integer, 'null'] }
+        approved_slots: { type: [integer, 'null'] }
+        payment_amount: { type: [integer, 'null'] }
+        proof_available: { type: boolean }
+        proof_mime_type: { type: [string, 'null'], enum: [image/jpeg, image/png, application/pdf, null] }
+        review_note: { type: [string, 'null'] }
+        reviewed_at: { type: [string, 'null'], format: date-time }
+        entitlement_starts_at: { type: [string, 'null'], format: date-time }
+        entitlement_expires_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+      required: [id, kind, status, requested_tier, requested_slots, approved_slots, payment_amount, proof_available, proof_mime_type, review_note, reviewed_at, entitlement_starts_at, entitlement_expires_at, created_at]
     Condition:
       type: string
       enum: [BNIB, NEW, LIKE_NEW, SECOND]
@@ -290,7 +458,7 @@ components:
         description: { type: string }
         price: { type: integer, minimum: 1 }
         condition: { $ref: '#/components/schemas/Condition' }
-        status: { type: string, enum: [active, sold, expired] }
+        status: { type: string, enum: [active, sold, expired, inactive] }
         category: { $ref: '#/components/schemas/Category' }
         location: { $ref: '#/components/schemas/Region' }
         photos:
@@ -311,10 +479,12 @@ components:
             verified_store: { type: boolean }
             shop: { type: [object, 'null'] }
             whatsapp_url: { type: [string, 'null'], format: uri }
-        expires_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time, description: Sisa masa tayang dibekukan saat sistem menonaktifkan listing }
+        suspended_at: { type: [string, 'null'], format: date-time }
+        suspension_reason: { type: [string, 'null'], enum: [tier_condition, quota, null] }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
-      required: [id, title, description, price, condition, status, category, location, photos, seller, expires_at, created_at, updated_at]
+      required: [id, title, description, price, condition, status, category, location, photos, seller, expires_at, suspended_at, suspension_reason, created_at, updated_at]
     CreateListing:
       type: object
       properties:
@@ -330,6 +500,7 @@ components:
           minItems: 1
           maxItems: 8
           items: { type: string, format: uuid }
+        cooldown_pass_id: { type: string, format: uuid, description: Opsional; dikonsumsi hanya jika listing berhasil dibuat saat cooldown aktif }
       required: [category_id, region_code, title, description, price, condition, photo_ids]
     UpdateListing:
       type: object
@@ -376,11 +547,15 @@ components:
         tier: { type: string, enum: [personal, toko, juragan] }
         active_listings: { type: integer }
         base_quota: { type: integer }
+        inactive_listings: { type: integer }
         addon_slots: { type: integer }
+        total_quota: { type: integer }
         available_slots: { type: integer }
+        available_cooldown_passes: { type: integer }
         cooldown_until: { type: [string, 'null'], format: date-time }
         may_list: { type: boolean }
-      required: [tier, active_listings, base_quota, addon_slots, available_slots, cooldown_until, may_list]
+        may_list_with_cooldown_pass: { type: boolean }
+      required: [tier, active_listings, inactive_listings, base_quota, addon_slots, total_quota, available_slots, available_cooldown_passes, cooldown_until, may_list, may_list_with_cooldown_pass]
     ShopResponse:
       type: object
       properties:
@@ -390,9 +565,10 @@ components:
             id: { type: string, format: uuid }
             name: { type: string }
             description: { type: [string, 'null'] }
+            verification_status: { type: string, enum: [unverified, pending, verified, rejected] }
             created_at: { type: string, format: date-time }
             updated_at: { type: string, format: date-time }
-          required: [id, name, description, created_at, updated_at]
+          required: [id, name, description, verification_status, created_at, updated_at]
       required: [data]
     Error:
       type: object

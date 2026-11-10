@@ -4,7 +4,7 @@ Backend untuk forum komunitas dan marketplace hobiis aquascape. Cakupan awal dib
 
 ## Status dan acuan
 
-**M1 — Fondasi NestJS dan PostgreSQL:** selesai. **M2 — Akun, autentikasi, dan OTP development:** selesai. **M3 — Marketplace dan aturan listing:** selesai; migrasi marketplace sudah diterapkan ke database development dan test, dan alur listing, upload (adapter palsu), kuota, cooldown, serta request bersamaan sudah diuji secara integrasi.
+**M1–M4:** selesai. Migrasi sudah diterapkan ke database development serta test; alur membership, add-on, verifikasi toko, audit admin, dan penangguhan/reactivasi listing telah diimplementasikan dan diuji.
 
 - [`revision.md`](revision.md): keputusan sistem terbaru dan detail yang belum diputuskan.
 - [`timeline.md`](timeline.md): milestone, checklist progres, kriteria selesai, dan aturan commit atomik.
@@ -70,7 +70,7 @@ Semua endpoint memakai prefix `/api/v1`.
 | `GET /marketplace/taxonomy` | Publik; kategori dan tag kondisi |
 | `GET /marketplace/listings` | Publik; pencarian teks, kategori, kondisi, harga, lokasi, sort, pagination |
 | `GET /marketplace/listings/:id` | Publik; detail listing aktif beserta tautan WhatsApp penjual jika tersedia |
-| `GET /marketplace/me/listings` | Login; listing aktif, terjual, dan kedaluwarsa milik sendiri |
+| `GET /marketplace/me/listings` | Login; listing aktif, terjual, kedaluwarsa, dan nonaktif milik sendiri |
 | `POST /marketplace/shops` | HP terverifikasi dan tier berbayar; membuat satu toko per akun |
 | `POST /marketplace/media/upload-signatures` | HP terverifikasi; membuat parameter signed upload dan reservasi aset |
 | `POST /marketplace/media/confirm-upload` | HP terverifikasi; backend memverifikasi aset Cloudinary sebelum digunakan |
@@ -80,9 +80,19 @@ Semua endpoint memakai prefix `/api/v1`.
 | `POST /marketplace/listings/:id/sold` | Pemilik listing; menandai terjual dan mengevaluasi cooldown |
 | `DELETE /marketplace/listings/:id` | Pemilik listing; soft delete dan cooldown Personal 2 hari |
 | `POST /marketplace/listings/:id/renew` | Pemilik listing; memperpanjang listing Expired setelah validasi ulang |
+| `POST /marketplace/listings/:id/reactivate` | Pemilik listing; aktifkan kembali listing nonaktif jika hak dan kuota mengizinkan |
+| `GET /marketplace/membership/plans` | Publik; paket Toko/Juragan |
+| `POST /marketplace/me/membership-requests` | HP terverifikasi; pengajuan membership dengan bukti transfer privat |
+| `POST /marketplace/me/addon-requests` | HP terverifikasi; pengajuan slot/cooldown pass dengan bukti transfer privat |
+| `POST /marketplace/me/shops/verification-requests` | HP terverifikasi; ajukan badge verifikasi toko |
+| `GET /marketplace/me/benefit-requests` | Login; riwayat pengajuan tanpa isi bukti transfer |
+| `GET /marketplace/me/entitlements` | Login; tier, add-on aktif, pass, status verifikasi toko |
+| `GET /marketplace/admin/benefit-requests` | Admin; daftar pengajuan |
+| `GET /marketplace/admin/benefit-requests/:id/proof` | Admin; unduh bukti transfer privat |
+| `POST /marketplace/admin/benefit-requests/:id/review` | Admin; setujui/tolak secara idempoten dengan audit |
 | `GET /marketplace/me/quota` | Login; informasi kuota dan cooldown akun |
 
-Untuk upload, klien meminta signature, mengirim foto langsung ke endpoint upload Cloudinary dengan parameter yang dikembalikan, lalu memanggil `confirm-upload`. Cloudinary tidak diperlukan untuk menjalankan aplikasi, tetapi endpoint media mengembalikan `503` sampai kredensial dan preset disiapkan.
+Untuk upload foto listing, klien meminta signature, mengirim foto langsung ke endpoint upload Cloudinary dengan parameter yang dikembalikan, lalu memanggil `confirm-upload`. Bukti transfer membership/add-on berbeda dari foto listing: bukti JPEG/PNG/PDF maksimal 5 MB disimpan privat di PostgreSQL dan hanya dapat diunduh admin. Harga add-on belum ditetapkan; admin memeriksa nominal dan menetapkan kapasitas slot yang disetujui. Upload foto Cloudinary mengembalikan `503` sampai kredensial dan preset disiapkan.
 
 ## Menjalankan fondasi dari clone baru
 
@@ -228,4 +238,4 @@ Satu commit menyelesaikan satu tujuan logis beserta test, migrasi, dan dokumenta
 
 Fondasi telah diverifikasi dari clone bersih: `npm ci`, migrasi/status, build, lint, 89 unit test, 63 e2e test, serta 6 integration test lulus. Audit production tidak menemukan kerentanan; audit keseluruhan masih mencatat 30 temuan tooling development (2 low, 28 moderate), bukan bukti proyek siap production.
 
-M1–M3 selesai. Migrasi akun dan marketplace telah diterapkan pada database development serta test; alur akun, listing, pencarian, upload adapter palsu, kuota, cooldown, dan expiry job telah diuji. Upload Cloudinary nyata memerlukan kredensial serta signed preset. Ikuti status dan catatan validasi di `timeline.md`.
+M1–M4 selesai. Migrasi M4 sudah diterapkan pada database development dan test; build, lint, unit, E2E, serta PostgreSQL integration test lulus. Upload Cloudinary nyata tetap memerlukan kredensial serta signed preset. Lihat `timeline.md` untuk status.
