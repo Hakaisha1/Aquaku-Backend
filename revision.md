@@ -215,24 +215,31 @@ Saat hak berkurang, listing BNIB/New dinonaktifkan lebih dulu jika tier menjadi 
 - Penolakan wajib mencatat alasan. Reviewer, waktu, keputusan, alasan, serta hak yang diberikan disimpan pada pengajuan; keputusan final idempoten.
 - Verifikasi toko adalah badge kepercayaan manual, bukan syarat untuk hak tier. MVP tidak meminta dokumen identitas resmi.
 
-## 10. Transaksi dan rating
+## 10. Transaksi, rating, laporan, dan moderasi
 
 ### Transaksi MVP
 
-- Pembeli menghubungi penjual melalui WhatsApp.
-- Transaksi dilakukan melalui COD/meetup atau pengiriman lokal sesuai kesepakatan.
-- Belum ada checkout, escrow, atau payment gateway untuk transaksi barang.
-- Rencana Midtrans untuk pembayaran platform tidak otomatis berarti pembayaran barang/escrow masuk scope.
+- Pembeli menghubungi penjual melalui WhatsApp; transaksi tetap dilakukan di luar platform melalui COD/meetup atau pengiriman lokal.
+- Penjual dapat menandai listing terjual tanpa akun pembeli; transaksi tersebut tidak terhubung ke akun dan tidak dapat diberi rating.
+- Jika penjual menghubungkan pembeli, pembeli harus mempunyai akun dengan HP terverifikasi. Status menunggu konfirmasi, pembeli dapat mengonfirmasi atau menolak; penolakan tidak mengaktifkan listing kembali.
+- Penjual dapat membatalkan transaksi yang masih menunggu jawaban atau mengganti pembeli sebelum konfirmasi. Listing tetap berstatus Sold.
+- Setelah dikonfirmasi, koreksi pembeli hanya oleh admin dengan alasan audit; koreksi membatalkan rating sebelumnya dan meminta konfirmasi pembeli baru.
+- Tidak ada batas waktu otomatis untuk konfirmasi. Transaksi barang tidak memakai checkout, escrow, atau payment gateway; Midtrans bukan bagian milestone ini.
 
-### Rating berbasis konfirmasi
+### Rating
 
-1. Penjual menandai listing terjual dan menunjuk pembeli yang mempunyai akun.
-2. Pembeli mengonfirmasi transaksi.
-3. Pembeli tersebut dapat memberi satu rating untuk transaksi yang dikonfirmasi.
+- Hanya pembeli dari transaksi Confirmed yang boleh memberi rating angka 1–5; komentar teks tidak termasuk MVP.
+- Satu rating per transaksi. Pengiriman ulang skor yang sama idempoten; perubahan rating setelah dibuat ditolak.
+- Jika admin mengoreksi pembeli, rating yang terkait dihapus dan pembeli baru harus mengonfirmasi sebelum dapat memberi rating.
+- Profil publik menampilkan nilai rata-rata, jumlah rating, dan jumlah listing aktif.
 
-Rating tidak dibuka bagi sembarang pengguna. Konfirmasi kedua pihak mengurangi penyalahgunaan, tetapi bukan bukti pembayaran independen dan tidak sepenuhnya mencegah kolusi.
+### Laporan dan moderasi
 
-Draft endpoint mark-sold/rating perlu disesuaikan saat modul transaksi dibuat. Aturan penolakan konfirmasi, transaksi dengan pembeli tanpa akun, dan koreksi salah pilih pembeli belum difinalkan.
+- Pengguna dengan HP terverifikasi dapat melaporkan listing/pengguna memakai alasan terkontrol: spam, scam, barang terlarang, menyesatkan, pelecehan, atau lainnya.
+- Satu laporan Open per pelapor/target; setelah ditinjau, admin menandai Resolved atau Dismissed dengan catatan. Laporan pengguna tidak otomatis menangguhkan akun.
+- Admin dapat menyembunyikan listing aktif dan memulihkannya, wajib memberi alasan; semua tindakan masuk audit.
+- Listing tersembunyi tidak tampil publik tetapi tetap memakai kuota dan tetap mengikuti masa tayang. Moderasi akun/pengguna ditunda.
+- Konfirmasi pembeli dan rating bukan bukti pembayaran independen dan tidak sepenuhnya mencegah kolusi.
 
 ## 11. Forum, media, dan fitur berikutnya
 
@@ -285,7 +292,7 @@ Draft endpoint mark-sold/rating perlu disesuaikan saat modul transaksi dibuat. A
 ## 13. Penyesuaian dokumentasi dan pengujian
 
 - `openapi.yaml` adalah kontrak API yang dipublikasikan dan diperbarui bersama implementasi. Draft `openapi-aquascape.yaml` lokal tetap hanya referensi dan tidak tersedia dalam clone.
-- Kontrak akan diperbarui lagi saat M5 menambahkan konfirmasi transaksi, rating, dan aturan terkait.
+- Kontrak `openapi.yaml` diperbarui bersama M5 untuk konfirmasi transaksi, rating, laporan, moderasi, audit admin, dan profil publik; kontrak menjadi acuan integrasi frontend marketplace.
 - Uji batas waktu cooldown/membership/add-on, penurunan hak akun, otorisasi, dan konsistensi kuota.
 - Kredensial asli, OTP pengguna nyata, dan secret tidak boleh masuk Git atau log production.
 - Pembuatan dokumen ini tidak mencakup scaffold aplikasi, commit, atau push.

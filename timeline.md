@@ -19,11 +19,11 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 | M2 | Akun, autentikasi, dan OTP development | M1 | Selesai |
 | M3 | Marketplace dan aturan listing | M2; keputusan wilayah dan lifecycle listing | Selesai |
 | M4 | Membership, add-on, dan admin | M3; keputusan lifecycle hak berbayar | Selesai |
-| M5 | Konfirmasi transaksi dan kepercayaan | M3; keputusan konfirmasi transaksi | Belum dimulai |
+| M5 | Konfirmasi transaksi dan kepercayaan | M3; keputusan konfirmasi transaksi | Selesai |
 | M6 | Forum dan MongoDB | M4 dan M5 sebagai prioritas delivery | Belum dimulai |
 | M7 | Kesiapan uji pengguna dan rilis | M4–M6 untuk MVP forum + marketplace | Belum dimulai |
 
-**Posisi saat ini:** M0–M4 selesai. Migrasi M4 sudah diterapkan ke database development dan test; 127 unit test, 63 E2E test, dan 9 PostgreSQL integration test lulus. Build, lint, Prisma validation, serta pemeriksaan TypeScript juga lulus.
+**Posisi saat ini:** M0–M5 selesai. Migrasi M5 sudah diterapkan ke database development dan test. Validasi akhir lulus: 127 unit test, 63 E2E test, dan 10 PostgreSQL integration test; build, TypeScript, lint, Prisma validation, dan pemeriksaan OpenAPI juga lulus. Target berikutnya adalah handoff internal marketplace ke tim frontend untuk integrasi dan QA, bukan rilis publik.
 
 ## 3. Checklist dan kriteria selesai
 
@@ -109,13 +109,15 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 
 ### M5 — Konfirmasi transaksi dan kepercayaan
 
-- [ ] Finalkan pembeli tanpa akun, penolakan konfirmasi, dan koreksi salah pilih pembeli.
-- [ ] Hubungkan penandaan terjual dengan pembeli terdaftar dan konfirmasi oleh pembeli.
-- [ ] Izinkan satu rating oleh pembeli yang berhak untuk setiap transaksi terkonfirmasi.
-- [ ] Implementasikan laporan listing/pengguna dan antrean moderasi admin.
-- [ ] Uji rating tanpa transaksi, konfirmasi oleh pihak lain, duplikasi rating, dan akses moderasi.
+- [x] Finalkan pembeli tanpa akun, penolakan konfirmasi, perubahan pembeli sebelum konfirmasi, dan koreksi admin setelah konfirmasi.
+- [x] Hubungkan penandaan terjual opsional dengan pembeli ber-HP terverifikasi dan konfirmasi pembeli.
+- [x] Izinkan satu rating angka 1–5 untuk pembeli dari transaksi terkonfirmasi; hapus rating lama saat koreksi pembeli.
+- [x] Implementasikan laporan listing/pengguna serta tindak lanjut dan audit admin.
+- [x] Implementasikan hide/restore listing dengan alasan dan riwayat moderasi; listing tersembunyi tetap memakai kuota.
+- [x] Publikasikan kontrak M5 pada `openapi.yaml` dan dokumentasikan endpoint untuk frontend.
+- [x] Uji transaksi tanpa akun pembeli, pihak yang tidak berhak, penolakan, penggantian/koreksi pembeli, rating duplikat, laporan, moderasi, dan audit melalui PostgreSQL integration.
 
-**Selesai jika:** rating tidak dapat dibuat pengguna sembarang; laporan dapat ditindaklanjuti admin; konfirmasi transaksi tidak diklaim sebagai bukti pembayaran independen.
+**Selesai jika:** rating tidak dapat dibuat pengguna sembarang; laporan dapat ditindaklanjuti admin; tindakan admin diaudit; kontrak siap untuk integrasi frontend; konfirmasi transaksi tidak diklaim sebagai bukti pembayaran independen. M5 selesai untuk handoff internal marketplace. Sebelum rilis production tetap dibutuhkan OTP provider nyata, kredensial/preset Cloudinary, verifikasi kode wilayah, dan pemeriksaan operasional M7.
 
 ### M6 — Forum dan MongoDB
 

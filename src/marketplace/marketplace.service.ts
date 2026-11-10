@@ -9,7 +9,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { Prisma, Tier, ListingCondition, ListingStatus } from '../generated/prisma/client';
+import { Prisma, Tier, ListingCondition, ListingStatus, SaleTransactionStatus } from '../generated/prisma/client';
 import { AuthenticatedUser } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 import { CLOUDINARY_CLIENT, CloudinaryClientPort } from './cloudinary-client';
@@ -125,6 +125,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
     const where: Prisma.ListingWhereInput = {
       status: ListingStatus.ACTIVE,
       deletedAt: null,
+      moderationHiddenAt: null,
       expiresAt: { gt: now },
       ...(query.q ? {
         OR: [
@@ -172,6 +173,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
         id: listingId,
         status: ListingStatus.ACTIVE,
         deletedAt: null,
+        moderationHiddenAt: null,
         expiresAt: { gt: new Date() },
       },
       include: listingInclude,
@@ -368,7 +370,13 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
       await this.processDueListings(tx, account, now);
       account = await this.getAccount(user.id, tx);
       const listing = await tx.listing.findFirst({
-        where: { id: listingId, sellerId: user.id, status: ListingStatus.ACTIVE, deletedAt: null },
+        where: {
+          id: listingId,
+          sellerId: user.id,
+          status: ListingStatus.ACTIVE,
+          deletedAt: null,
+          moderationHiddenAt: null,
+        },
         include: { photos: { where: { uploadedAt: { not: null } } } },
       });
       if (!listing || listing.expiresAt <= now) throw new NotFoundException();
@@ -420,7 +428,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async markSold(user: AuthenticatedUser, listingId: string) {
+  async markSold(user: AuthenticatedUser, listingId: string, buyerId?: string) {
     const now = new Date();
     return this.prisma.$transaction(async (tx) => {
       await this.lockAccount(tx, user.id);
@@ -428,22 +436,46 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
       await this.processDueListings(tx, account, now);
       account = await this.getAccount(user.id, tx);
       const listing = await tx.listing.findFirst({
-        where: { id: listingId, sellerId: user.id, status: ListingStatus.ACTIVE, deletedAt: null, expiresAt: { gt: now } },
+        where: {
+          id: listingId,
+          sellerId: user.id,
+          status: ListingStatus.ACTIVE,
+          deletedAt: null,
+          moderationHiddenAt: null,
+          expiresAt: { gt: now },
+        },
         select: { id: true },
       });
       if (!listing) throw new NotFoundException();
+      if (buyerId === user.id) throw new BadRequestException('Seller cannot be the transaction buyer');
+      if (buyerId) await this.assertVerifiedBuyer(tx, buyerId);
       const tier = this.effectiveTier(account, now);
-      const activeCount = await tx.listing.count({
-        where: { sellerId: user.id, status: ListingStatus.ACTIVE, deletedAt: null },
-      });
+      const [activeCount, addonSlots] = await Promise.all([
+        tx.listing.count({ where: { sellerId: user.id, status: ListingStatus.ACTIVE, deletedAt: null } }),
+        this.getActiveAddonSlots(tx, user.id, now),
+      ]);
       await tx.listing.update({ where: { id: listingId }, data: { status: ListingStatus.SOLD, soldAt: now } });
-      if (tier === Tier.PERSONAL && activeCount >= tierPolicy[tier].quota && !this.cooldownActive(account, now)) {
+      if (
+        tier === Tier.PERSONAL && activeCount >= tierPolicy[tier].quota + addonSlots &&
+        !this.cooldownActive(account, now)
+      ) {
         await tx.user.update({
           where: { id: user.id },
           data: { personalCooldownUntil: new Date(now.getTime() + 7 * 86_400_000) },
         });
       }
-      return { id: listingId, status: 'sold', sold_at: now };
+      const sale = buyerId
+        ? await tx.saleTransaction.create({
+          data: { listingId, sellerId: user.id, buyerId, status: SaleTransactionStatus.AWAITING_CONFIRMATION },
+          select: { id: true, buyerId: true, status: true },
+        })
+        : null;
+      return {
+        id: listingId,
+        status: 'sold',
+        sold_at: now,
+        transaction: sale ? { id: sale.id, buyer_id: sale.buyerId, status: sale.status.toLowerCase() } : null,
+      };
     });
   }
 
@@ -528,7 +560,13 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
       this.assertNoCooldown(account, tier, now);
       await this.assertCapacity(tx, account.id, tier, now);
       const listing = await tx.listing.findFirst({
-        where: { id: listingId, sellerId: user.id, status: ListingStatus.EXPIRED, deletedAt: null },
+        where: {
+          id: listingId,
+          sellerId: user.id,
+          status: ListingStatus.EXPIRED,
+          deletedAt: null,
+          moderationHiddenAt: null,
+        },
         include: { photos: { where: { uploadedAt: { not: null } } } },
       });
       if (!listing) throw new NotFoundException();
@@ -811,6 +849,12 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
     if (photos.length !== photoIds.length) throw new BadRequestException('One or more photos are unavailable');
   }
 
+  private async assertVerifiedBuyer(tx: MarketplaceTransaction, buyerId: string) {
+    const buyer = await tx.user.findUnique({ where: { id: buyerId }, select: { phoneVerifiedAt: true } });
+    if (!buyer) throw new NotFoundException('Buyer account not found');
+    if (!buyer.phoneVerifiedAt) throw new ForbiddenException('Buyer phone verification required');
+  }
+
   private async validateShop(tx: MarketplaceTransaction, ownerId: string, tier: Tier, shopId?: string) {
     if (!shopId) return null;
     if (tier === Tier.PERSONAL) throw new ForbiddenException('A paid seller tier is required to use a shop');
@@ -892,6 +936,8 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
       expires_at: listing.expiresAt,
       suspended_at: listing.suspendedAt,
       suspension_reason: listing.suspensionReason?.toLowerCase() ?? null,
+      moderation_hidden_at: listing.moderationHiddenAt,
+      moderation_reason: listing.moderationReason,
       created_at: listing.createdAt,
       updated_at: listing.updatedAt,
     };

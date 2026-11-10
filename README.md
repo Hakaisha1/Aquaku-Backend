@@ -4,7 +4,7 @@ Backend untuk forum komunitas dan marketplace hobiis aquascape. Cakupan awal dib
 
 ## Status dan acuan
 
-**M1–M4:** selesai. Migrasi sudah diterapkan ke database development serta test; alur membership, add-on, verifikasi toko, audit admin, dan penangguhan/reactivasi listing telah diimplementasikan dan diuji.
+**M1–M5:** selesai. Migrasi sudah diterapkan ke database development serta test. Marketplace kini mencakup transaksi dengan konfirmasi pembeli, rating, laporan, serta moderasi listing yang diaudit. Target setelah M5 adalah handoff internal ke tim frontend untuk integrasi dan QA marketplace—bukan rilis publik. OTP nyata, kredensial Cloudinary/preset, dan verifikasi data kode wilayah Semarang tetap menjadi prasyarat sebelum rilis production.
 
 - [`revision.md`](revision.md): keputusan sistem terbaru dan detail yang belum diputuskan.
 - [`timeline.md`](timeline.md): milestone, checklist progres, kriteria selesai, dan aturan commit atomik.
@@ -77,7 +77,17 @@ Semua endpoint memakai prefix `/api/v1`.
 | `DELETE /marketplace/media/:assetId` | Pemilik aset; menghapus file di Cloudinary secara idempoten |
 | `POST /marketplace/listings` | HP terverifikasi; membuat listing dengan foto terverifikasi |
 | `PATCH /marketplace/listings/:id` | Pemilik listing; mengubah listing aktif tanpa mereset masa tayang |
-| `POST /marketplace/listings/:id/sold` | Pemilik listing; menandai terjual dan mengevaluasi cooldown |
+| `POST /marketplace/listings/:id/sold` | Pemilik listing; menandai terjual, opsional menautkan pembeli ber-HP terverifikasi, dan mengevaluasi cooldown |
+| `POST /marketplace/listings/:id/sale` | Pemilik listing; menautkan/mengganti pembeli sebelum konfirmasi |
+| `DELETE /marketplace/sales/:saleId` | Pemilik listing; membatalkan tautan pembeli yang masih menunggu konfirmasi |
+| `GET /marketplace/me/sales` / `GET /marketplace/me/purchases` | Login; riwayat penjualan/pembelian terhubung |
+| `POST /marketplace/sales/:saleId/respond` | Pembeli terhubung; konfirmasi atau tolak transaksi |
+| `POST /marketplace/sales/:saleId/rating` | Pembeli terkonfirmasi; beri satu rating angka 1–5 |
+| `POST /marketplace/reports` / `GET /marketplace/me/reports` | HP terverifikasi untuk membuat laporan; login untuk melihat laporan sendiri |
+| `GET /marketplace/admin/reports` / `POST /marketplace/admin/reports/:id/review` | Admin; antrean dan tindak lanjut laporan |
+| `GET, POST /marketplace/admin/listings/:id/moderation` | Admin; riwayat hide/restore listing dengan alasan |
+| `POST /marketplace/admin/sales/:saleId/correct-buyer` / `GET /marketplace/admin/sales/:saleId/corrections` | Admin; koreksi pembeli transaksi dan lihat audit |
+| `GET /users/:userId` | Publik; profil dengan ringkasan rating |
 | `DELETE /marketplace/listings/:id` | Pemilik listing; soft delete dan cooldown Personal 2 hari |
 | `POST /marketplace/listings/:id/renew` | Pemilik listing; memperpanjang listing Expired setelah validasi ulang |
 | `POST /marketplace/listings/:id/reactivate` | Pemilik listing; aktifkan kembali listing nonaktif jika hak dan kuota mengizinkan |

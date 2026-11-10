@@ -19,6 +19,7 @@ import {
   CreateListingDto,
   CreateShopDto,
   ListingSearchDto,
+  MarkSoldDto,
   MyListingsQueryDto,
   UpdateListingDto,
 } from './marketplace.dto';
@@ -108,8 +109,9 @@ export class MarketplaceController {
   async markSold(
     @CurrentUser() user: AuthenticatedUser,
     @Param('listingId', new ParseUUIDPipe()) listingId: string,
+    @Body() body?: MarkSoldDto,
   ) {
-    return { data: await this.marketplace.markSold(user, listingId) };
+    return { data: await this.marketplace.markSold(user, listingId, body?.buyer_id) };
   }
 
   @Delete('listings/:listingId')

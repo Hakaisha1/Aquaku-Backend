@@ -49,27 +49,47 @@ export class UsersService {
   }
 
   async getPublic(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        displayName: true,
-        avatarUrl: true,
-        tier: true,
-        verifiedStore: true,
-        bio: true,
-      },
-    });
+    const [user, ratings, activeListingCount] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          displayName: true,
+          avatarUrl: true,
+          tier: true,
+          tierExpiresAt: true,
+          verifiedStore: true,
+          bio: true,
+        },
+      }),
+      this.prisma.rating.aggregate({
+        where: { sellerId: userId },
+        _avg: { score: true },
+        _count: { _all: true },
+      }),
+      this.prisma.listing.count({
+        where: {
+          sellerId: userId,
+          status: 'ACTIVE',
+          deletedAt: null,
+          moderationHiddenAt: null,
+          expiresAt: { gt: new Date() },
+        },
+      }),
+    ]);
     if (!user) throw new NotFoundException();
+    const effectiveTier = user.tier !== 'PERSONAL' && user.tierExpiresAt && user.tierExpiresAt <= new Date()
+      ? 'personal'
+      : user.tier.toLowerCase();
     return {
       id: user.id,
       display_name: user.displayName,
       avatar_url: user.avatarUrl,
-      tier: user.tier.toLowerCase(),
+      tier: effectiveTier,
       verified_store: user.verifiedStore,
-      rating_average: null,
-      rating_count: 0,
-      active_listing_count: 0,
+      rating_average: ratings._avg.score,
+      rating_count: ratings._count._all,
+      active_listing_count: activeListingCount,
       bio: user.bio,
     };
   }

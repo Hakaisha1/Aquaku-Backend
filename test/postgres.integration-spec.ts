@@ -69,6 +69,7 @@ describe('PostgreSQL integration', () => {
     expect(rows).toEqual(expect.arrayContaining([
       { migration_name: '20261108000000_initialize_schema' },
       { migration_name: '20261110100000_membership_addons_admin' },
+      { migration_name: '20261110110000_marketplace_trust_m5' },
     ]));
   });
 
@@ -592,6 +593,229 @@ describe('PostgreSQL integration', () => {
       expect(new Date(reactivated.body.data.expires_at as string).getTime()).toBeGreaterThan(oldExpiry.getTime());
     } finally {
       if (ownerId) await prisma.user.delete({ where: { id: ownerId } });
+      if (adminId) await prisma.user.delete({ where: { id: adminId } });
+    }
+  });
+
+  it('requires buyer confirmation for ratings and supports reports and audited listing moderation', async () => {
+    const createVerifiedSession = async (displayName: string) => {
+      const email = `${randomUUID()}@example.com`;
+      const registration = await request(app.getHttpServer())
+        .post('/api/v1/auth/register')
+        .send({
+          email,
+          password: 'correct horse battery staple',
+          display_name: displayName,
+          phone_number: `0812${randomInt(10_000_000, 99_999_999)}`,
+        })
+        .expect(201);
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email, password: 'correct horse battery staple' })
+        .expect(200);
+      const accessToken = login.body.data.access_token as string;
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/verify-phone')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ code: registration.body.development_otp as string })
+        .expect(200);
+      return { id: registration.body.data.id as string, accessToken };
+    };
+
+    let sellerId: string | undefined;
+    let buyerOneId: string | undefined;
+    let buyerTwoId: string | undefined;
+    let adminId: string | undefined;
+    try {
+      const seller = await createVerifiedSession('M5 Seller');
+      sellerId = seller.id;
+      const buyerOne = await createVerifiedSession('M5 Buyer One');
+      buyerOneId = buyerOne.id;
+      const buyerTwo = await createVerifiedSession('M5 Buyer Two');
+      buyerTwoId = buyerTwo.id;
+      const admin = await createVerifiedSession('M5 Moderator');
+      adminId = admin.id;
+      await prisma.user.update({
+        where: { id: seller.id },
+        data: { tier: 'TOKO', tierExpiresAt: new Date(Date.now() + 30 * 86_400_000) },
+      });
+      await prisma.user.update({ where: { id: admin.id }, data: { role: 'ADMIN' } });
+
+      const [regions, taxonomy] = await Promise.all([
+        request(app.getHttpServer()).get('/api/v1/marketplace/regions').expect(200),
+        request(app.getHttpServer()).get('/api/v1/marketplace/taxonomy').expect(200),
+      ]);
+      const createListing = async (title: string) => {
+        const photoIds: string[] = [];
+        for (let index = 0; index < 3; index += 1) {
+          const signature = await request(app.getHttpServer())
+            .post('/api/v1/marketplace/media/upload-signatures')
+            .set('Authorization', `Bearer ${seller.accessToken}`)
+            .expect(201);
+          const confirmed = await request(app.getHttpServer())
+            .post('/api/v1/marketplace/media/confirm-upload')
+            .set('Authorization', `Bearer ${seller.accessToken}`)
+            .send({ asset_id: signature.body.data.asset_id })
+            .expect(201);
+          photoIds.push(confirmed.body.data.id as string);
+        }
+        const response = await request(app.getHttpServer())
+          .post('/api/v1/marketplace/listings')
+          .set('Authorization', `Bearer ${seller.accessToken}`)
+          .send({
+            category_id: taxonomy.body.data.categories[0].id as string,
+            region_code: regions.body.data[0].code as string,
+            title,
+            description: 'A marketplace trust integration-test listing.',
+            price: 50000,
+            condition: 'SECOND',
+            photo_ids: photoIds,
+          })
+          .expect(201);
+        return response.body.data.id as string;
+      };
+
+      const transactionListingId = await createListing('M5 confirmed transaction listing');
+      const sold = await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/listings/${transactionListingId}/sold`)
+        .set('Authorization', `Bearer ${seller.accessToken}`)
+        .send({ buyer_id: buyerOne.id })
+        .expect(201);
+      const firstSaleId = sold.body.data.transaction.id as string;
+      expect(sold.body.data.transaction.status).toBe('awaiting_confirmation');
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/sales/${firstSaleId}/respond`)
+        .set('Authorization', `Bearer ${buyerTwo.accessToken}`)
+        .send({ decision: 'CONFIRM' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/sales/${firstSaleId}/rating`)
+        .set('Authorization', `Bearer ${buyerOne.accessToken}`)
+        .send({ score: 5 })
+        .expect(409);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/sales/${firstSaleId}/respond`)
+        .set('Authorization', `Bearer ${buyerOne.accessToken}`)
+        .send({ decision: 'REJECT', note: 'I did not buy this item' })
+        .expect(201)
+        .expect(({ body }) => expect(body.data.status).toBe('rejected'));
+      expect((await prisma.listing.findUniqueOrThrow({ where: { id: transactionListingId } })).status).toBe('SOLD');
+
+      const reassigned = await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/listings/${transactionListingId}/sale`)
+        .set('Authorization', `Bearer ${seller.accessToken}`)
+        .send({ buyer_id: buyerTwo.id })
+        .expect(201);
+      const secondSaleId = reassigned.body.data.id as string;
+      const confirmations = await Promise.all([1, 2].map(() => request(app.getHttpServer())
+        .post(`/api/v1/marketplace/sales/${secondSaleId}/respond`)
+        .set('Authorization', `Bearer ${buyerTwo.accessToken}`)
+        .send({ decision: 'CONFIRM' })));
+      expect(confirmations.map((response) => response.status)).toEqual([201, 201]);
+      const rating = await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/sales/${secondSaleId}/rating`)
+        .set('Authorization', `Bearer ${buyerTwo.accessToken}`)
+        .send({ score: 5 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/sales/${secondSaleId}/rating`)
+        .set('Authorization', `Bearer ${buyerTwo.accessToken}`)
+        .send({ score: 4 })
+        .expect(409);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/listings/${transactionListingId}/sale`)
+        .set('Authorization', `Bearer ${seller.accessToken}`)
+        .send({ buyer_id: buyerOne.id })
+        .expect(409);
+      const corrected = await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/admin/sales/${secondSaleId}/correct-buyer`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ buyer_id: buyerOne.id, reason: 'Seller provided the wrong buyer account' })
+        .expect(201);
+      expect(corrected.body.data).toMatchObject({ id: secondSaleId, status: 'awaiting_confirmation', rating: null });
+      await request(app.getHttpServer())
+        .get(`/api/v1/marketplace/admin/sales/${secondSaleId}/corrections`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200)
+        .expect(({ body }) => expect(body.data).toHaveLength(1));
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/sales/${secondSaleId}/respond`)
+        .set('Authorization', `Bearer ${buyerOne.accessToken}`)
+        .send({ decision: 'CONFIRM' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/sales/${secondSaleId}/rating`)
+        .set('Authorization', `Bearer ${buyerOne.accessToken}`)
+        .send({ score: 4 })
+        .expect(201);
+      const publicSeller = await request(app.getHttpServer())
+        .get(`/api/v1/users/${seller.id}`)
+        .expect(200);
+      expect(publicSeller.body.data).toMatchObject({ rating_average: 4, rating_count: 1 });
+      expect(rating.body.data.score).toBe(5);
+      expect(await prisma.saleTransactionCorrection.count({ where: { saleTransactionId: secondSaleId } })).toBe(1);
+
+      const hiddenListingId = await createListing('M5 listing to moderate');
+      const listingReport = await request(app.getHttpServer())
+        .post('/api/v1/marketplace/reports')
+        .set('Authorization', `Bearer ${buyerOne.accessToken}`)
+        .send({ target_type: 'LISTING', target_id: hiddenListingId, reason: 'MISLEADING', details: 'Test report' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post('/api/v1/marketplace/reports')
+        .set('Authorization', `Bearer ${buyerOne.accessToken}`)
+        .send({ target_type: 'LISTING', target_id: hiddenListingId, reason: 'SPAM' })
+        .expect(409);
+      await request(app.getHttpServer())
+        .get('/api/v1/marketplace/admin/reports')
+        .set('Authorization', `Bearer ${buyerOne.accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/admin/listings/${hiddenListingId}/moderation`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ action: 'HIDE', reason: 'Pending review of a misleading listing report' })
+        .expect(201);
+      await request(app.getHttpServer()).get(`/api/v1/marketplace/listings/${hiddenListingId}`).expect(404);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/admin/listings/${hiddenListingId}/moderation`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ action: 'RESTORE', reason: 'Review completed; listing may be visible' })
+        .expect(201);
+      await request(app.getHttpServer()).get(`/api/v1/marketplace/listings/${hiddenListingId}`).expect(200);
+      await request(app.getHttpServer())
+        .get(`/api/v1/marketplace/admin/listings/${hiddenListingId}/moderation`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200)
+        .expect(({ body }) => expect(body.data).toHaveLength(2));
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/admin/reports/${listingReport.body.data.id as string}/review`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ decision: 'RESOLVED', review_note: 'Listing moderation action recorded' })
+        .expect(201);
+
+      const userReport = await request(app.getHttpServer())
+        .post('/api/v1/marketplace/reports')
+        .set('Authorization', `Bearer ${buyerOne.accessToken}`)
+        .send({ target_type: 'USER', target_id: seller.id, reason: 'OTHER' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/admin/reports/${userReport.body.data.id as string}/review`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ decision: 'DISMISSED', review_note: 'No further action required' })
+        .expect(201);
+
+      const unlinkedListingId = await createListing('M5 sale without account buyer');
+      const unlinkedSale = await request(app.getHttpServer())
+        .post(`/api/v1/marketplace/listings/${unlinkedListingId}/sold`)
+        .set('Authorization', `Bearer ${seller.accessToken}`)
+        .expect(201);
+      expect(unlinkedSale.body.data.transaction).toBeNull();
+      expect(await prisma.saleTransaction.count({ where: { listingId: unlinkedListingId } })).toBe(0);
+      expect(await prisma.moderationAction.count({ where: { listingId: hiddenListingId } })).toBe(2);
+    } finally {
+      if (sellerId) await prisma.user.delete({ where: { id: sellerId } });
+      if (buyerOneId) await prisma.user.delete({ where: { id: buyerOneId } });
+      if (buyerTwoId) await prisma.user.delete({ where: { id: buyerTwoId } });
       if (adminId) await prisma.user.delete({ where: { id: adminId } });
     }
   });

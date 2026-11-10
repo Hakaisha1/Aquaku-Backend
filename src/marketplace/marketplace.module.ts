@@ -6,13 +6,16 @@ import { MarketplaceBenefitsController } from './marketplace-benefits.controller
 import { MarketplaceBenefitsService } from './marketplace-benefits.service';
 import { MarketplaceController } from './marketplace.controller';
 import { MarketplaceService } from './marketplace.service';
+import { MarketplaceTrustController } from './marketplace-trust.controller';
+import { MarketplaceTrustService } from './marketplace-trust.service';
 
 @Module({
   imports: [AuthModule, DatabaseModule],
-  controllers: [MarketplaceController, MarketplaceBenefitsController],
+  controllers: [MarketplaceController, MarketplaceBenefitsController, MarketplaceTrustController],
   providers: [
     MarketplaceService,
     MarketplaceBenefitsService,
+    MarketplaceTrustService,
     { provide: CLOUDINARY_CLIENT, useClass: CloudinaryClient },
   ],
 })

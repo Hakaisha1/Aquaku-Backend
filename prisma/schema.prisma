@@ -31,6 +31,37 @@ enum ListingSuspensionReason {
   QUOTA
 }
 
+enum SaleTransactionStatus {
+  AWAITING_CONFIRMATION
+  CONFIRMED
+  REJECTED
+  CANCELLED
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum ReportReason {
+  SPAM
+  SCAM
+  PROHIBITED_ITEM
+  MISLEADING
+  HARASSMENT
+  OTHER
+}
+
+enum ListingModerationAction {
+  HIDE
+  RESTORE
+}
+
+enum SaleTransactionCorrectionAction {
+  BUYER_CORRECTED
+}
+
 enum BenefitRequestKind {
   MEMBERSHIP
   SLOT_ADDON
@@ -83,6 +114,17 @@ model User {
   reviewedBenefitRequests BenefitRequest[] @relation("BenefitRequestReviewer")
   slotAddonGrants SlotAddonGrant[]
   cooldownPasses  CooldownPass[]
+  salesAsSeller SaleTransaction[] @relation("SaleSeller")
+  salesAsBuyer SaleTransaction[] @relation("SaleBuyer")
+  ratingsReceived Rating[] @relation("RatingSeller")
+  ratingsGiven Rating[] @relation("RatingBuyer")
+  reportsMade Report[] @relation("ReportReporter")
+  reportsAboutUser Report[] @relation("ReportTargetUser")
+  reportsReviewed Report[] @relation("ReportReviewer")
+  moderationActions ModerationAction[]
+  saleCorrectionsAsAdmin SaleTransactionCorrection[] @relation("SaleCorrectionAdmin")
+  saleCorrectionsAsPreviousBuyer SaleTransactionCorrection[] @relation("SaleCorrectionPreviousBuyer")
+  saleCorrectionsAsNewBuyer SaleTransactionCorrection[] @relation("SaleCorrectionNewBuyer")
   personalCooldownUntil DateTime? @map("personal_cooldown_until") @db.Timestamptz(3)
 
   @@map("users")
@@ -187,6 +229,8 @@ model Listing {
   deletedAt   DateTime?                @map("deleted_at") @db.Timestamptz(3)
   suspendedAt DateTime?                @map("suspended_at") @db.Timestamptz(3)
   suspensionReason ListingSuspensionReason? @map("suspension_reason")
+  moderationHiddenAt DateTime?            @map("moderation_hidden_at") @db.Timestamptz(3)
+  moderationReason String?                 @map("moderation_reason") @db.VarChar(500)
   createdAt   DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
   seller      User                     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
@@ -195,6 +239,9 @@ model Listing {
   region      Region                   @relation(fields: [regionCode], references: [code], onDelete: Restrict)
   photos      MediaAsset[]
   tags        ListingTagAssignment[]
+  saleTransactions SaleTransaction[]
+  reports Report[] @relation("ReportTargetListing")
+  moderationActions ModerationAction[]
 
   @@index([status, deletedAt, expiresAt])
   @@index([sellerId, status, deletedAt])
@@ -280,4 +327,97 @@ model CooldownPass {
 
   @@index([userId, expiresAt, consumedAt])
   @@map("cooldown_passes")
+}
+
+model SaleTransaction {
+  id               String                 @id @default(uuid()) @db.Uuid
+  listingId        String                 @map("listing_id") @db.Uuid
+  sellerId         String                 @map("seller_id") @db.Uuid
+  buyerId          String                 @map("buyer_id") @db.Uuid
+  status           SaleTransactionStatus  @default(AWAITING_CONFIRMATION)
+  responseNote     String?                @map("response_note") @db.VarChar(500)
+  respondedAt      DateTime?              @map("responded_at") @db.Timestamptz(3)
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  listing          Listing                @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  seller           User                   @relation("SaleSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  buyer            User                   @relation("SaleBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  rating           Rating?
+  corrections      SaleTransactionCorrection[]
+
+  @@index([listingId, status, createdAt])
+  @@index([sellerId, status, createdAt])
+  @@index([buyerId, status, createdAt])
+  @@map("sale_transactions")
+}
+
+model Rating {
+  id                 String          @id @default(uuid()) @db.Uuid
+  saleTransactionId  String          @unique @map("sale_transaction_id") @db.Uuid
+  buyerId            String          @map("buyer_id") @db.Uuid
+  sellerId           String          @map("seller_id") @db.Uuid
+  score              Int
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  transaction        SaleTransaction @relation(fields: [saleTransactionId], references: [id], onDelete: Cascade)
+  buyer              User            @relation("RatingBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller             User            @relation("RatingSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId, createdAt])
+  @@map("ratings")
+}
+
+model Report {
+  id              String       @id @default(uuid()) @db.Uuid
+  reporterId      String       @map("reporter_id") @db.Uuid
+  targetListingId String?      @map("target_listing_id") @db.Uuid
+  targetUserId    String?      @map("target_user_id") @db.Uuid
+  reason          ReportReason
+  details         String?      @db.VarChar(1000)
+  status          ReportStatus @default(OPEN)
+  reviewedById    String?      @map("reviewed_by_id") @db.Uuid
+  reviewNote      String?      @map("review_note") @db.VarChar(500)
+  reviewedAt      DateTime?    @map("reviewed_at") @db.Timestamptz(3)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  reporter        User         @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetListing   Listing?     @relation("ReportTargetListing", fields: [targetListingId], references: [id], onDelete: Cascade)
+  targetUser      User?        @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+  reviewer        User?        @relation("ReportReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([reporterId, createdAt])
+  @@map("reports")
+}
+
+model ModerationAction {
+  id        String                  @id @default(uuid()) @db.Uuid
+  listingId String                  @map("listing_id") @db.Uuid
+  adminId   String                  @map("admin_id") @db.Uuid
+  action    ListingModerationAction
+  reason    String                  @db.VarChar(500)
+  createdAt DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  listing   Listing                 @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  admin     User                    @relation(fields: [adminId], references: [id], onDelete: Restrict)
+
+  @@index([listingId, createdAt])
+  @@index([adminId, createdAt])
+  @@map("moderation_actions")
+}
+
+model SaleTransactionCorrection {
+  id              String                            @id @default(uuid()) @db.Uuid
+  saleTransactionId String                          @map("sale_transaction_id") @db.Uuid
+  adminId         String                            @map("admin_id") @db.Uuid
+  previousBuyerId String                            @map("previous_buyer_id") @db.Uuid
+  newBuyerId      String                            @map("new_buyer_id") @db.Uuid
+  action          SaleTransactionCorrectionAction   @default(BUYER_CORRECTED)
+  reason          String                            @db.VarChar(500)
+  createdAt       DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
+  saleTransaction SaleTransaction                   @relation(fields: [saleTransactionId], references: [id], onDelete: Cascade)
+  admin           User                              @relation("SaleCorrectionAdmin", fields: [adminId], references: [id], onDelete: Restrict)
+  previousBuyer   User                              @relation("SaleCorrectionPreviousBuyer", fields: [previousBuyerId], references: [id], onDelete: Restrict)
+  newBuyer        User                              @relation("SaleCorrectionNewBuyer", fields: [newBuyerId], references: [id], onDelete: Restrict)
+
+  @@index([saleTransactionId, createdAt])
+  @@index([adminId, createdAt])
+  @@map("sale_transaction_corrections")
 }

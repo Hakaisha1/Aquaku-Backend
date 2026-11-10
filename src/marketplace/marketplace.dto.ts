@@ -186,6 +186,12 @@ export class MyListingsQueryDto {
   limit?: number;
 }
 
+export class MarkSoldDto {
+  @IsOptional()
+  @IsUUID()
+  buyer_id?: string;
+}
+
 export class ConfirmUploadDto {
   @IsUUID()
   asset_id!: string;

@@ -40,9 +40,16 @@ describe('UsersService', () => {
           displayName: 'Aquaku User',
           avatarUrl: null,
           tier: 'PERSONAL',
+          tierExpiresAt: null,
           verifiedStore: false,
           bio: 'Aquascape enthusiast',
         }),
+      },
+      rating: {
+        aggregate: jest.fn().mockResolvedValue({ _avg: { score: null }, _count: { _all: 0 } }),
+      },
+      listing: {
+        count: jest.fn().mockResolvedValue(0),
       },
     } as unknown as PrismaService;
     const service = new UsersService(prisma);
