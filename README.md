@@ -8,6 +8,8 @@ Backend untuk forum komunitas dan marketplace hobiis aquascape. Cakupan awal dib
 
 - [`revision.md`](revision.md): keputusan sistem terbaru dan detail yang belum diputuskan.
 - [`timeline.md`](timeline.md): milestone, checklist progres, kriteria selesai, dan aturan commit atomik.
+- [`docs.md`](docs.md): referensi integrasi API dan checklist QA internal.
+- [`front-development.md`](front-development.md): alur UI dan aturan bisnis untuk pengembangan frontend.
 
 Jika ada perbedaan dengan konsep atau draft OpenAPI lama, ikuti `revision.md`. Fitur yang telah tersedia disebutkan di bagian status; fitur lainnya tetap berupa rencana.
 

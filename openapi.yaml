@@ -4,11 +4,146 @@ info:
   version: 0.5.0
   description: REST API akun, marketplace, membership, transaksi, rating, dan moderasi Aquaku.
 servers:
+  - url: https://aquaku-backend-staging.up.railway.app/api/v1
+    description: Railway staging (default for Bruno)
   - url: http://localhost:3000/api/v1
-    description: Development
+    description: Local development
 security:
   - bearerAuth: []
 paths:
+  /auth/register:
+    post:
+      security: []
+      summary: Daftar akun dan minta verifikasi nomor HP
+      description: development_otp hanya dikembalikan saat APP_ENV development/test; jangan gunakan untuk production.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email, maxLength: 320 }
+                password: { type: string, minLength: 12, maxLength: 128 }
+                display_name: { type: string, minLength: 1, maxLength: 80 }
+                phone_number: { type: string, minLength: 8, maxLength: 24 }
+              required: [email, password, display_name, phone_number]
+      responses:
+        '201':
+          description: Akun dibuat; development_otp tersedia hanya untuk development/test
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /auth/login:
+    post:
+      security: []
+      summary: Login dan terbitkan access/refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email, maxLength: 320 }
+                password: { type: string, minLength: 1, maxLength: 128 }
+              required: [email, password]
+      responses:
+        '200':
+          description: Token dan profil pengguna
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPairResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/refresh:
+    post:
+      security: []
+      summary: Rotasi refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token: { type: string, minLength: 1, maxLength: 4096 }
+              required: [refresh_token]
+      responses:
+        '200':
+          description: Token baru dan profil pengguna
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPairResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/verify-phone:
+    post:
+      summary: Verifikasi nomor HP dengan kode OTP enam digit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string, pattern: '^[0-9]{6}$' }
+              required: [code]
+      responses:
+        '200':
+          description: Nomor HP terverifikasi
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfileResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /auth/otp/resend:
+    post:
+      summary: Kirim ulang kode OTP
+      responses:
+        '200':
+          description: OTP dikirim; development_otp hanya tersedia di development/test
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OtpResendResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: Batas pengiriman atau percobaan OTP tercapai }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /users/me:
+    get:
+      summary: Profil akun sendiri
+      responses:
+        '200':
+          description: Profil pengguna
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfileResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      summary: Ubah profil akun sendiri
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name: { type: string, minLength: 1, maxLength: 80 }
+                avatar_url: { type: string, format: uri, maxLength: 2048 }
+                whatsapp_number: { type: string, maxLength: 24 }
+                bio: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Profil diperbarui
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfileResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /marketplace/regions:
     get:
       security: []
@@ -671,6 +806,58 @@ components:
       required: true
       schema: { type: string, format: uuid }
   schemas:
+    UserProfile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        avatar_url: { type: [string, 'null'], format: uri }
+        phone_verified: { type: boolean }
+        tier: { type: string, enum: [personal, toko, juragan] }
+        tier_expires_at: { type: [string, 'null'], format: date-time }
+        verified_store: { type: boolean }
+        role: { type: string, enum: [member, admin] }
+        created_at: { type: string, format: date-time }
+      required: [id, email, display_name, avatar_url, phone_verified, tier, tier_expires_at, verified_store, role, created_at]
+    UserProfileResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/UserProfile' }
+      required: [data]
+    RegisterResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/UserProfile' }
+        development_otp:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: Hanya dikirim saat APP_ENV development/test.
+      required: [data]
+    TokenPairResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            access_token: { type: string }
+            refresh_token: { type: string }
+            expires_in: { type: integer }
+            user: { $ref: '#/components/schemas/UserProfile' }
+          required: [access_token, refresh_token, expires_in, user]
+      required: [data]
+    OtpResendResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            development_otp:
+              type: string
+              pattern: '^[0-9]{6}$'
+              description: Hanya dikirim saat APP_ENV development/test.
+          additionalProperties: false
+      required: [data]
     MembershipPlan:
       type: object
       properties:
