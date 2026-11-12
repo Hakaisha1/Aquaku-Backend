@@ -85,7 +85,7 @@ function validMongoUrl(value: string): boolean {
     const databaseName = decodeURIComponent(url.pathname.slice(1));
     return (
       (url.protocol === 'mongodb:' || url.protocol === 'mongodb+srv:') &&
-      Boolean(url.hostname) && Boolean(databaseName) && !databaseName.includes('/') &&
+      Boolean(url.hostname) && (!databaseName || !databaseName.includes('/')) &&
       !url.hash && (url.protocol !== 'mongodb+srv:' || !url.port)
     );
   } catch {

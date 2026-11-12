@@ -206,7 +206,7 @@ Aplikasi memuat `.env` saat startup tanpa menimpa environment proses yang sudah 
 | `PORT` | Integer 1–65535; default `3000` |
 | `API_PREFIX` | Path tanpa trailing slash; default `/api/v1` |
 | `DATABASE_URL` | Wajib, URL PostgreSQL dengan host dan nama database |
-| `MONGODB_URI` | URL MongoDB; default development/test `mongodb://127.0.0.1:27017/aquaku`, wajib di production |
+| `MONGODB_URI` | URL MongoDB; default development/test `mongodb://127.0.0.1:27017/aquaku`, wajib di production. URI Railway tanpa path database diterima; aplikasi memilih database `aquaku` |
 | `JWT_ACCESS_SECRET` | Development/test boleh kosong (secret acak per proses); production wajib minimal 32 karakter acak |
 | `JWT_REFRESH_SECRET` | Aturan sama, wajib berbeda dari access secret |
 | `OTP_ID_API_KEY` | Wajib di production; API key OTP.ID hanya digunakan dari backend. Jika di development/test tidak diisi, OTP lokal digunakan |

@@ -33,6 +33,14 @@ describe('validateConfig', () => {
     });
   });
 
+  it('accepts a Railway MongoDB URI without a database path', () => {
+    const railwayUri = 'mongodb://mongo:secret@mongo.railway.internal:27017';
+    expect(validateConfig({ ...base, APP_ENV: 'production', MONGODB_URI: railwayUri,
+      JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
+      OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
+    }).mongoUri).toBe(railwayUri);
+  });
+
   it.each(['development', 'test', 'production'])('accepts APP_ENV %s', (APP_ENV) => {
     const secrets = APP_ENV === 'production'
       ? {
@@ -70,7 +78,7 @@ describe('validateConfig', () => {
     ['API_PREFIX', `/${'a'.repeat(128)}`],
     ['DATABASE_URL', undefined], ['DATABASE_URL', ''],
         ['MONGODB_URI', ''], ['MONGODB_URI', 'postgresql://localhost/aquaku'],
-        ['MONGODB_URI', 'mongodb:///aquaku'], ['MONGODB_URI', 'mongodb://localhost'],
+        ['MONGODB_URI', 'mongodb:///aquaku'],
         ['MONGODB_URI', 'mongodb://localhost/aquaku#fragment'],
         ['MONGODB_URI', 'mongodb://localhost/aquaku%ZZ'],
         ['MONGODB_URI', 'mongodb+srv://cluster.example.com:27017/aquaku'],

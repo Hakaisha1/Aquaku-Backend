@@ -16,6 +16,7 @@ import { ForumModule } from './forum/forum.module';
       inject: [RUNTIME_CONFIG],
       useFactory: (config: RuntimeConfig) => ({
         uri: config.mongoUri,
+        dbName: 'aquaku',
         lazyConnection: true,
         serverSelectionTimeoutMS: 5_000,
       }),
