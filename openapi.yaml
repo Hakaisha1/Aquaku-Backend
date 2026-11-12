@@ -15,7 +15,7 @@ paths:
     post:
       security: []
       summary: Daftar akun dan minta verifikasi nomor HP
-      description: development_otp hanya dikembalikan saat APP_ENV development/test; jangan gunakan untuk production.
+      description: Meminta OTP WhatsApp outbound melalui OTP.ID jika OTP_ID_API_KEY dikonfigurasi pada backend. Kode OTP tidak dikembalikan dalam response. development_otp hanya tersedia bila key tidak dikonfigurasi dan APP_ENV development/test; production memerlukan OTP_ID_API_KEY. Jangan pernah mengekspos API key ke client.
       requestBody:
         required: true
         content:
@@ -30,12 +30,13 @@ paths:
               required: [email, password, display_name, phone_number]
       responses:
         '201':
-          description: Akun dibuat; development_otp tersedia hanya untuk development/test
+          description: Akun dibuat dan OTP diminta. development_otp hanya tersedia tanpa OTP_ID_API_KEY pada APP_ENV development/test; jika OTP.ID aktif, kode dikirim melalui WhatsApp dan tidak dikembalikan.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RegisterResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { description: Batas pengiriman OTP/provider tercapai; tunggu sebelum mencoba kembali }
         '503': { $ref: '#/components/responses/Unavailable' }
   /auth/login:
     post:
@@ -100,18 +101,22 @@ paths:
               schema: { $ref: '#/components/schemas/UserProfileResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { description: Batas percobaan OTP/provider tercapai; tunggu sebelum mencoba kembali }
         '503': { $ref: '#/components/responses/Unavailable' }
   /auth/otp/resend:
     post:
       summary: Kirim ulang kode OTP
       responses:
         '200':
-          description: OTP dikirim; development_otp hanya tersedia di development/test
+          description: OTP diminta; jika OTP_ID_API_KEY aktif, kode dikirim melalui WhatsApp dan tidak dikembalikan. development_otp hanya tersedia tanpa key pada APP_ENV development/test.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OtpResendResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '429': { description: Batas pengiriman atau percobaan OTP tercapai }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { description: Cooldown resend atau batas pengiriman OTP/provider tercapai }
         '503': { $ref: '#/components/responses/Unavailable' }
   /users/me:
     get:
@@ -832,7 +837,7 @@ components:
         development_otp:
           type: string
           pattern: '^[0-9]{6}$'
-          description: Hanya dikirim saat APP_ENV development/test.
+          description: Hanya dikembalikan jika OTP_ID_API_KEY tidak disetel dan APP_ENV development/test; tidak ada saat OTP.ID digunakan.
       required: [data]
     TokenPairResponse:
       type: object
@@ -855,7 +860,7 @@ components:
             development_otp:
               type: string
               pattern: '^[0-9]{6}$'
-              description: Hanya dikirim saat APP_ENV development/test.
+              description: Hanya dikembalikan jika OTP_ID_API_KEY tidak disetel dan APP_ENV development/test; tidak ada saat OTP.ID digunakan.
           additionalProperties: false
       required: [data]
     MembershipPlan:

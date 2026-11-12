@@ -21,6 +21,15 @@ Content-Type: application/json
 
 Endpoint baca marketplace publik dan `GET /users/{userId}` tidak memerlukan token. Membuat atau merespons transaksi dan membuat laporan memerlukan akun dengan nomor HP terverifikasi. Endpoint antrean, review, moderasi, dan koreksi hanya dapat digunakan admin.
 
+### Verifikasi nomor HP dengan OTP.ID
+
+- `POST /auth/register` membuat akun belum terverifikasi dan meminta OTP melalui WhatsApp outbound OTP.ID jika backend memiliki `OTP_ID_API_KEY`.
+- Saat OTP.ID aktif, kode dikirim ke nomor WhatsApp yang didaftarkan dan tidak dikembalikan di response API. Pengiriman OTP nyata menggunakan kredit akun OTP.ID. Tanpa key di development/test, backend memakai OTP lokal yang dapat mengembalikan `development_otp`.
+- Untuk verifikasi, login terlebih dahulu lalu kirim `POST /auth/verify-phone` dengan kode enam digit dan `Authorization: Bearer <access_token>` dari login. Login sebelum verifikasi memang diizinkan.
+- `POST /auth/otp/resend` juga memerlukan Bearer token; tunggu cooldown minimal 60 detik sebelum meminta kirim ulang. Tangani `429` dengan menunggu, bukan retry berulang.
+- `OTP_ID_API_KEY` hanya disimpan di environment backend/Railway, tidak di frontend. Jika key tidak disetel, hanya environment development/test yang memakai OTP lokal dan dapat mengembalikan `development_otp`; ketika key disetel, OTP.ID dipakai dan kode tidak dikembalikan, termasuk di development/test. Production memerlukan key tersebut.
+- Untuk QA staging/Bruno, pastikan `OTP_ID_API_KEY` sudah dikonfigurasi pada backend staging. Gunakan nomor WhatsApp milik sendiri, register lalu login, salin access token ke Bearer Auth pada request verify/resend, dan masukkan kode yang diterima lewat WhatsApp. Jangan masukkan atau membagikan API key OTP.ID di Bruno/client.
+
 Sebagian besar response dibungkus dengan properti `data`. Timestamp dikirim sebagai ISO 8601. Enum pada request umumnya uppercase, sedangkan nilai status/action yang dikembalikan API ditampilkan lowercase; ikuti schema request dan response masing-masing pada OpenAPI.
 
 ## 2. Endpoint utama untuk integrasi
@@ -195,7 +204,9 @@ Gunakan `RESTORE` untuk memulihkan listing. Listing tersembunyi tidak muncul di 
 - `401 Unauthorized`: access token tidak ada atau tidak valid; arahkan pengguna ke autentikasi ulang.
 - `403 Forbidden`: pengguna bukan pemilik/pembeli/admin yang berhak atau HP belum terverifikasi.
 - `404 Not Found`: resource tidak ditemukan atau listing tidak tersedia secara publik.
-- `409 Conflict`: transisi status tidak diizinkan, transaksi/laporan duplikat, atau rating tidak dapat diubah.
+- `409 Conflict`: transisi status tidak diizinkan, transaksi/laporan duplikat, OTP.ID menyatakan transaksi OTP sudah tidak dapat digunakan, atau rating tidak dapat diubah.
+- `429 Too Many Requests`: cooldown/batas OTP atau batas request tercapai; tunggu sebelum mencoba lagi.
+- `503 Service Unavailable`: provider OTP/layanan lain tidak tersedia atau konfigurasi server belum lengkap.
 
 Jangan mengasumsikan semua error dapat dicoba ulang. Untuk `409`, refresh detail/riwayat terlebih dahulu dan tampilkan status terbaru. Bentuk response error mengikuti format error API yang digunakan backend.
 
@@ -215,7 +226,7 @@ Jangan mengasumsikan semua error dapat dicoba ulang. Untuk `409`, refresh detail
 ## 7. Batasan untuk QA dan rilis
 
 - Konfirmasi pembeli dan rating bukan bukti pembayaran independen. Checkout, escrow, dan payment gateway transaksi barang tidak tersedia.
-- OTP yang tersedia untuk development bukan provider OTP produksi.
+- Alur OTP.ID WhatsApp outbound sudah tersedia. Environment production harus memiliki `OTP_ID_API_KEY` yang valid; pastikan saldo/kredit akun cukup dan jangan mengekspos key di frontend.
 - Upload foto listing memerlukan kredensial dan preset Cloudinary yang valid; tanpa konfigurasi tersebut upload mengembalikan `503`.
 - Kode wilayah ditujukan untuk Kota Semarang; verifikasi akhir data wilayah tetap diperlukan sebelum production.
 - Panduan ini dan milestone M5 menyiapkan integrasi marketplace internal. Keamanan, operasional, CI/deployment, backup, dan uji rilis publik tetap bagian pekerjaan kesiapan rilis berikutnya.

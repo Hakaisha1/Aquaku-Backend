@@ -40,7 +40,7 @@ Content-Type: application/json
 
 Endpoint baca publik tidak memerlukan token. Upload foto ke Cloudinary dilakukan langsung dari klien dengan parameter bertanda tangan yang diperoleh dari backend; jangan pernah mengirim `CLOUDINARY_API_SECRET` ke frontend.
 
-Staging dapat memakai OTP development dan domainnya dapat diakses publik. Gunakan akun/data uji; jangan pakai kredensial atau data pengguna nyata. Provider OTP production belum tersedia. Upload foto akan mengembalikan `503` sampai Cloudinary dikonfigurasi.
+Staging dapat diakses publik untuk QA internal. Alur OTP menggunakan OTP.ID melalui WhatsApp outbound jika `OTP_ID_API_KEY` dikonfigurasi pada backend; pengiriman memakai kredit akun OTP.ID. Gunakan nomor milik sendiri dan data uji, jangan memakai kredensial/data pengguna nyata. API key hanya disimpan di Railway/backend, tidak pernah di frontend. Upload foto akan mengembalikan `503` sampai Cloudinary dikonfigurasi.
 
 ## 3. Akun, sesi, dan verifikasi HP
 
@@ -48,12 +48,13 @@ Staging dapat memakai OTP development dan domainnya dapat diakses publik. Gunaka
 
 Alur:
 
-1. `POST /auth/register` dengan `email`, `password`, `display_name`, dan `phone_number`.
-2. `POST /auth/login` untuk mendapatkan `access_token`, `refresh_token`, dan profil. Login dapat dilakukan sebelum HP diverifikasi.
-3. Kirim `POST /auth/verify-phone` dengan access token dan kode OTP enam digit.
-4. Perbarui profil lokal dari response verifikasi atau `GET /users/me`.
+1. `POST /auth/register` dengan `email`, `password`, `display_name`, dan `phone_number` dalam format yang diterima API. Backend membuat akun belum terverifikasi dan meminta OTP.
+2. Jika `OTP_ID_API_KEY` dikonfigurasi, OTP.ID mengirim kode melalui WhatsApp ke nomor yang didaftarkan dan tidak mengembalikan kode dalam response API. Tanpa key di development/test, backend menggunakan OTP lokal.
+3. `POST /auth/login` untuk mendapatkan `access_token`, `refresh_token`, dan profil. Login dapat dilakukan sebelum HP diverifikasi.
+4. Kirim `POST /auth/verify-phone` dengan access token dari login sebagai Bearer token dan kode enam digit yang diterima lewat WhatsApp.
+5. Perbarui profil lokal dari response verifikasi atau `GET /users/me`.
 
-Password minimal 12 karakter. Kode OTP berlaku 5 menit, maksimal 5 percobaan, dan resend memiliki jeda minimal 60 detik. Saat `APP_ENV` adalah development/test, response registrasi/resend menyertakan `development_otp`; field itu tidak tersedia pada production.
+Password minimal 12 karakter. Resend melalui `POST /auth/otp/resend` memerlukan access token dan memiliki jeda minimal 60 detik. OTP.ID menetapkan masa berlaku dan batas percobaan pada alur provider. Untuk development/test tanpa `OTP_ID_API_KEY`, backend memakai OTP lokal; hanya pada mode lokal itu response register/resend dapat menyertakan `development_otp`. Jika API key disetel, OTP dikirim melalui OTP.ID dan kode tidak pernah disertakan di response, termasuk di development/test.
 
 HP terverifikasi wajib untuk memasang/mengubah listing, menandai terjual, merespons transaksi, memberi rating, dan membuat laporan. Tampilkan status verifikasi serta arahkan pengguna ke alur OTP sebelum tindakan tersebut.
 
@@ -232,7 +233,8 @@ Untuk mutasi yang timeout atau response-nya tidak diketahui, refresh data server
 
 - [ ] Import `openapi.yaml` ke Bruno; server default mengarah ke Railway staging.
 - [ ] Endpoint publik regions/taxonomy/listings dapat dibuka tanpa token.
-- [ ] Register → login → verify OTP berhasil; token refresh mengganti pasangan token.
+- [ ] Dengan OTP.ID aktif di staging, register mengirim OTP ke WhatsApp; response tidak memuat kode. Login memberi access token, lalu verify memakai kode yang diterima dan Bearer token tersebut.
+- [ ] Uji resend hanya setelah cooldown 60 detik; tangani `429` tanpa retry berulang.
 - [ ] Akun belum verified mendapat arahan verifikasi pada tindakan yang mensyaratkannya.
 - [ ] Kondisi barang dan minimum foto sesuai aturan; invalid region/photo ditolak backend.
 - [ ] Kuota, cooldown, benefit Pending, Expired, Inactive, Sold, dan moderasi hidden ditampilkan berbeda.
@@ -245,4 +247,4 @@ Untuk mutasi yang timeout atau response-nya tidak diketahui, refresh data server
 
 ## 12. Batasan sebelum production
 
-Staging saat ini untuk QA internal dan dapat memakai OTP development. Jangan gunakan data pengguna nyata atau membagikan OTP/token. Rilis production tetap memerlukan provider OTP nyata, kredensial/preset Cloudinary, verifikasi terbaru data wilayah Semarang, proteksi secret, dan tinjauan operasional/security. Lihat [`timeline.md`](timeline.md) untuk gerbang kesiapan rilis.
+Staging saat ini untuk QA internal dan memakai OTP.ID jika `OTP_ID_API_KEY` terpasang; pengujian pengiriman OTP dapat memakai kredit akun. Jangan gunakan data pengguna nyata atau membagikan OTP/token. Untuk production, pastikan `OTP_ID_API_KEY` sudah diisi pada environment Railway production secara terpisah dan tetap server-side. Rilis juga memerlukan kredensial/preset Cloudinary, verifikasi terbaru data wilayah Semarang, proteksi secret, dan tinjauan operasional/security. Lihat [`timeline.md`](timeline.md) untuk gerbang kesiapan rilis.
