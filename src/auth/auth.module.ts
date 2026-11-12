@@ -6,12 +6,14 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AccessTokenGuard, RolesGuard, VerifiedPhoneGuard } from './auth.guards';
 import { DevelopmentOtpSender, FakeOtpSender, OTP_SENDER } from './otp-sender';
+import { OtpIdService } from './otp-id.service';
 
 @Module({
   imports: [ConfigModule, DatabaseModule],
   controllers: [AuthController],
   providers: [
     AuthService,
+    OtpIdService,
     AccessTokenGuard,
     RolesGuard,
     VerifiedPhoneGuard,

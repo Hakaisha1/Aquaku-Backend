@@ -21,6 +21,7 @@ describe('validateConfig', () => {
       DATABASE_URL: 'postgres://user:pass@[::1]:5432/aquaku?sslmode=require',
       CORS_ORIGIN: 'https://example.com:443/',
       JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
+      OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
     })).toMatchObject({
       appEnv: 'production', port: 65535, apiPrefix: '/service/v2',
       databaseUrl: 'postgres://user:pass@[::1]:5432/aquaku?sslmode=require',
@@ -31,7 +32,11 @@ describe('validateConfig', () => {
 
   it.each(['development', 'test', 'production'])('accepts APP_ENV %s', (APP_ENV) => {
     const secrets = APP_ENV === 'production'
-      ? { JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32) }
+      ? {
+        JWT_ACCESS_SECRET: 'a'.repeat(32),
+        JWT_REFRESH_SECRET: 'b'.repeat(32),
+        OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
+      }
       : {};
     expect(validateConfig({ ...base, APP_ENV, ...secrets }).appEnv).toBe(APP_ENV);
   });
@@ -165,13 +170,21 @@ describe('validateConfig', () => {
     })).toThrow('Invalid configuration fields: CLOUDINARY_CLOUD_NAME');
   });
 
-  it('requires distinct strong JWT secrets in production', () => {
+  it('requires distinct strong JWT secrets and an OTP.ID key in production', () => {
     expect(() => validateConfig({ ...base, APP_ENV: 'production' }))
-      .toThrow('Invalid configuration fields: JWT_ACCESS_SECRET, JWT_REFRESH_SECRET');
+      .toThrow('Invalid configuration fields: JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, OTP_ID_API_KEY');
     expect(() => validateConfig({
       ...base, APP_ENV: 'production',
       JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'a'.repeat(32),
+      OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
     })).toThrow('Invalid configuration fields: JWT_REFRESH_SECRET');
+    expect(() => validateConfig({
+      ...base,
+      APP_ENV: 'production',
+      JWT_ACCESS_SECRET: 'a'.repeat(32),
+      JWT_REFRESH_SECRET: 'b'.repeat(32),
+      OTP_ID_API_KEY: 'private invalid key',
+    })).toThrow('Invalid configuration fields: OTP_ID_API_KEY');
   });
 
   it('reports all invalid fields without including values or secrets', () => {

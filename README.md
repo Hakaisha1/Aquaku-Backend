@@ -208,6 +208,7 @@ Aplikasi memuat `.env` saat startup tanpa menimpa environment proses yang sudah 
 | `DATABASE_URL` | Wajib, URL PostgreSQL dengan host dan nama database |
 | `JWT_ACCESS_SECRET` | Development/test boleh kosong (secret acak per proses); production wajib minimal 32 karakter acak |
 | `JWT_REFRESH_SECRET` | Aturan sama, wajib berbeda dari access secret |
+| `OTP_ID_API_KEY` | Wajib di production; API key OTP.ID hanya digunakan dari backend. Jika di development/test tidak diisi, OTP lokal digunakan |
 | `CORS_ORIGIN` | Opsional; satu origin HTTP/HTTPS tanpa path/kredensial/wildcard; hapus variabel untuk menonaktifkan CORS, jangan isi string kosong |
 | `CLOUDINARY_URL` | Opsional; format standar `cloudinary://<api_key>:<api_secret>@<cloud_name>`, alternatif untuk tiga variabel kredensial di bawah |
 | `CLOUDINARY_CLOUD_NAME` | Opsional; gunakan bersama `CLOUDINARY_API_KEY` dan `CLOUDINARY_API_SECRET` jika tidak memakai `CLOUDINARY_URL` |
@@ -229,10 +230,11 @@ Template `.env.example` memakai URL PostgreSQL development di port host 5433 dan
 Request menggunakan whitelist DTO dan menolak field asing. Payload JSON terlalu besar ditolak dengan `413`, encoding yang tidak didukung dengan `415`. Error HTTP memakai bentuk `{ "error": { "code": "...", "message": "..." } }`; detail exception internal tidak dikirim ke klien. Prefix, validasi, filter error, dan CORS diterapkan melalui konfigurasi aplikasi yang juga dipakai e2e test.
 
 - Jangan commit `.env`, secret asli, token, atau data pribadi.
-- OTP development memakai kode 6 digit yang berlaku 5 menit, maksimal 5 percobaan, dan jeda kirim ulang 60 detik. Kode tersedia pada response lokal register/resend; gunakan hanya di development/test.
-- OTP lokal hanya menguji alur, bukan membuktikan kepemilikan nomor HP. Registrasi/verifikasi/resend memakai OTP lokal ditolak di production; registrasi production menunggu provider OTP nyata.
+- OTP lokal development/test memakai kode 6 digit yang berlaku 5 menit, maksimal 5 percobaan, dan jeda kirim ulang 60 detik. Kode hanya tersedia pada response lokal dan tidak boleh dipakai untuk membuktikan nomor HP di production.
+- Production memakai OTP.ID untuk mengirim WhatsApp OTP dan memverifikasi kode melalui API server-side. Set `OTP_ID_API_KEY` di environment production; kode OTP tidak disimpan atau dikirim ke klien oleh backend. Atur `brand_name` pada akun OTP.ID karena request menggunakan brand akun.
+- Kirim ulang OTP tetap dibatasi cooldown lokal dan memakai `external_id` unik agar retry jaringan tidak mengirim atau menagih dua kali.
 - Password menerima 12–128 karakter dan di-hash menggunakan scrypt. Access token berlaku 15 menit; refresh token berlaku 30 hari, disimpan dalam bentuk hash, dan dirotasi setiap digunakan.
-- Provider OTP nyata harus dipilih sebelum verifikasi dipakai oleh pengguna nyata.
+
 
 ## Isi repositori
 

@@ -32,7 +32,7 @@ const userRow = {
   updatedAt: now,
 };
 
-function createHarness(appEnv: RuntimeConfig['appEnv'] = 'test') {
+function createHarness(appEnv: RuntimeConfig['appEnv'] = 'test', otpIdConfigured = false) {
   const tx = {
     user: { create: jest.fn(), update: jest.fn() },
     otpChallenge: { create: jest.fn(), deleteMany: jest.fn() },
@@ -51,10 +51,20 @@ function createHarness(appEnv: RuntimeConfig['appEnv'] = 'test') {
     apiPrefix: '/api/v1',
     databaseUrl: 'postgresql://localhost/aquaku_test',
     ...secrets,
+    ...(otpIdConfigured ? { otpIdApiKey: '550e8400-e29b-41d4-a716-446655440000' } : {}),
   } as RuntimeConfig;
   const sender = new FakeOtpSender();
-  const service = new AuthService(prisma as unknown as PrismaService, config, sender);
-  return { service, prisma, tx, sender };
+  const otpId = {
+    isConfigured: otpIdConfigured,
+    requestPhoneOtp: jest.fn().mockResolvedValue({
+      otpId: 'OTP20261112ABCD000001',
+      status: 'sent',
+      expiresAt: new Date(Date.now() + 300_000),
+    }),
+    verifyPhoneOtp: jest.fn(),
+  };
+  const service = new AuthService(prisma as unknown as PrismaService, config, sender, otpId as never);
+  return { service, prisma, tx, sender, otpId };
 }
 
 describe('AuthService', () => {
@@ -81,7 +91,35 @@ describe('AuthService', () => {
     expect(sender.sent).toEqual([{ phoneNumber: '+6281234567890', code: result.development_otp }]);
   });
 
-  it('does not allow the local OTP channel in production', async () => {
+  it('registers with OTP.ID without returning or storing the OTP code', async () => {
+    const { service, prisma, tx, otpId } = createHarness('production', true);
+    tx.user.create.mockResolvedValue({ ...userRow, email: 'person@example.com' });
+    tx.otpChallenge.create.mockResolvedValue({});
+    prisma.otpChallenge.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await service.register({
+      email: 'person@example.com',
+      password: 'correct horse battery staple',
+      display_name: 'Person',
+      phone_number: '081234567890',
+    });
+
+    expect(otpId.requestPhoneOtp).toHaveBeenCalledWith('+6281234567890', expect.any(String));
+    expect(result).not.toHaveProperty('development_otp');
+    const challenge = tx.otpChallenge.create.mock.calls[0][0] as {
+      data: { codeHash: string | null; externalId: string | null; providerStatus: string | null };
+    };
+    expect(challenge.data).toMatchObject({ codeHash: null, providerStatus: 'requesting' });
+    expect(challenge.data.externalId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(prisma.otpChallenge.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        providerOtpId: 'OTP20261112ABCD000001',
+        providerStatus: 'sent',
+      }),
+    }));
+  });
+
+  it('does not allow local OTP delivery in production without OTP.ID configuration', async () => {
     const { service, prisma } = createHarness('production');
     await expect(service.register({
       email: 'person@example.com',
@@ -164,6 +202,53 @@ describe('AuthService', () => {
     await expect(service.refresh(refreshToken)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
+  it('verifies OTP.ID codes before marking a phone verified', async () => {
+    const { service, prisma, tx, otpId } = createHarness('production', true);
+    const providerOtpId = 'OTP20261112ABCD000001';
+    prisma.user.findUnique.mockResolvedValue(userRow);
+    prisma.otpChallenge.findUnique.mockResolvedValue({
+      id: '4c4394e6-2dab-4020-8bd0-077755046711',
+      userId: userRow.id,
+      codeHash: null,
+      providerOtpId,
+      externalId: '0a118e4e-782e-4e77-8970-b51e0f45dcad',
+      providerStatus: 'sent',
+      attempts: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+      lastSentAt: now,
+    });
+    otpId.verifyPhoneOtp.mockResolvedValue(true);
+    tx.otpChallenge.deleteMany.mockResolvedValue({ count: 1 });
+    tx.user.update.mockResolvedValue({ ...userRow, phoneVerifiedAt: now });
+
+    await expect(service.verifyPhone(userRow.id, '123456'))
+      .resolves.toMatchObject({ phone_verified: true });
+    expect(otpId.verifyPhoneOtp).toHaveBeenCalledWith(providerOtpId, '123456');
+    expect(tx.otpChallenge.deleteMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ providerOtpId }),
+    }));
+  });
+
+  it('does not mark a phone verified when OTP.ID reports a code mismatch', async () => {
+    const { service, prisma, tx, otpId } = createHarness('production', true);
+    prisma.user.findUnique.mockResolvedValue(userRow);
+    prisma.otpChallenge.findUnique.mockResolvedValue({
+      id: '4c4394e6-2dab-4020-8bd0-077755046711',
+      userId: userRow.id,
+      codeHash: null,
+      providerOtpId: 'OTP20261112ABCD000001',
+      externalId: '0a118e4e-782e-4e77-8970-b51e0f45dcad',
+      providerStatus: 'sent',
+      attempts: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+      lastSentAt: now,
+    });
+    otpId.verifyPhoneOtp.mockResolvedValue(false);
+
+    await expect(service.verifyPhone(userRow.id, '000000')).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.user.update).not.toHaveBeenCalled();
+  });
+
   it('counts invalid OTP attempts and rejects incorrect codes', async () => {
     const { service, prisma } = createHarness();
     prisma.user.findUnique.mockResolvedValue(userRow);
@@ -214,6 +299,27 @@ describe('AuthService', () => {
     });
     await expect(service.verifyPhone(userRow.id, '123456'))
       .rejects.toMatchObject({ status: 429 });
+  });
+
+  it('reuses the same OTP.ID external ID after an uncertain request outcome', async () => {
+    const { service, prisma, otpId } = createHarness('production', true);
+    const externalId = '0a118e4e-782e-4e77-8970-b51e0f45dcad';
+    prisma.user.findUnique.mockResolvedValue(userRow);
+    prisma.otpChallenge.findUnique.mockResolvedValue({
+      id: '4c4394e6-2dab-4020-8bd0-077755046711',
+      userId: userRow.id,
+      codeHash: null,
+      providerOtpId: null,
+      externalId,
+      providerStatus: 'requesting',
+      attempts: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+      lastSentAt: new Date(Date.now() - 120_000),
+    });
+    prisma.otpChallenge.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(service.resendOtp(userRow.id)).resolves.toEqual({});
+    expect(otpId.requestPhoneOtp).toHaveBeenCalledWith(userRow.phoneNumber, externalId);
   });
 
   it('enforces the OTP resend delay', async () => {

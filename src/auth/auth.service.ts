@@ -26,6 +26,7 @@ import {
 } from './auth-security';
 import { hashPassword, verifyPassword } from './password-hasher';
 import { OTP_SENDER, OtpSender } from './otp-sender';
+import { OtpIdService } from './otp-id.service';
 
 const userSelection = {
   id: true,
@@ -70,17 +71,21 @@ export class AuthService {
     private readonly prisma: PrismaService,
     @Inject(RUNTIME_CONFIG) private readonly config: RuntimeConfig,
     @Inject(OTP_SENDER) private readonly otpSender: OtpSender,
+    private readonly otpId: OtpIdService,
   ) {}
 
   async register(input: RegisterDto): Promise<RegistrationResult> {
-    this.assertLocalOtpAllowed();
+    this.ensureOtpProviderAvailable();
     const email = input.email.trim().toLowerCase();
     const phoneNumber = normalizeIndonesianPhone(input.phone_number);
     const displayName = input.display_name.trim();
     if (!displayName) throw new BadRequestException();
 
-    const code = createOtpCode();
+    const usesOtpId = this.otpId.isConfigured;
+    const code = usesOtpId ? undefined : createOtpCode();
+    const externalId = usesOtpId ? randomUUID() : null;
     const passwordHash = await hashPassword(input.password);
+    const now = new Date();
     try {
       const user = await this.prisma.$transaction(async (tx) => {
         const created = await tx.user.create({
@@ -90,17 +95,25 @@ export class AuthService {
         await tx.otpChallenge.create({
           data: {
             userId: created.id,
-            codeHash: this.hashOtp(created.id, code),
-            expiresAt: new Date(Date.now() + OTP_TTL_MILLISECONDS),
-            lastSentAt: new Date(),
+            codeHash: code === undefined ? null : this.hashOtp(created.id, code),
+            providerOtpId: null,
+            externalId,
+            providerStatus: usesOtpId ? 'requesting' : null,
+            expiresAt: new Date(now.getTime() + OTP_TTL_MILLISECONDS),
+            lastSentAt: now,
           },
         });
         return created;
       });
-      await this.otpSender.send(phoneNumber, code);
+      if (usesOtpId && externalId) {
+        await this.requestAndSaveOtpIdChallenge(user.id, phoneNumber, externalId);
+      } else if (code !== undefined) {
+        await this.otpSender.send(phoneNumber, code);
+      }
       return {
         user: this.toUserProfile(user),
-        ...(this.config.appEnv === 'development' || this.config.appEnv === 'test'
+        ...(!usesOtpId && code !== undefined &&
+          (this.config.appEnv === 'development' || this.config.appEnv === 'test')
           ? { development_otp: code }
           : {}),
       };
@@ -183,14 +196,30 @@ export class AuthService {
   }
 
   async verifyPhone(userId: string, code: string): Promise<UserProfile> {
-    this.assertLocalOtpAllowed();
+    this.ensureOtpProviderAvailable();
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: userSelection });
     if (!user) throw new UnauthorizedException();
     if (user.phoneVerifiedAt) return this.toUserProfile(user);
 
     const challenge = await this.prisma.otpChallenge.findUnique({ where: { userId } });
     const now = new Date();
-    if (!challenge || challenge.expiresAt <= now) throw new BadRequestException();
+    if (!challenge || challenge.expiresAt <= now) throw new BadRequestException('OTP has expired');
+
+    if (challenge.providerOtpId) {
+      if (!this.otpId.isConfigured || challenge.providerStatus === 'failed') {
+        throw new ServiceUnavailableException('OTP provider unavailable');
+      }
+      if (!await this.otpId.verifyPhoneOtp(challenge.providerOtpId, code)) {
+        throw new BadRequestException('Invalid verification code');
+      }
+      return this.consumeOtpChallenge(userId, challenge.id, now, {
+        providerOtpId: challenge.providerOtpId,
+      });
+    }
+
+    if (this.config.appEnv === 'production' || !challenge.codeHash) {
+      throw new ServiceUnavailableException('OTP provider unavailable');
+    }
     if (challenge.attempts >= OTP_MAX_ATTEMPTS) throw new HttpException('Too many requests', 429);
 
     if (!constantTimeTextEqual(this.hashOtp(userId, code), challenge.codeHash)) {
@@ -202,15 +231,136 @@ export class AuthService {
       throw new BadRequestException();
     }
 
+    return this.consumeOtpChallenge(userId, challenge.id, now, {
+      codeHash: challenge.codeHash,
+      attempts: { lt: OTP_MAX_ATTEMPTS },
+    });
+  }
+
+  async resendOtp(userId: string): Promise<{ development_otp?: string }> {
+    this.ensureOtpProviderAvailable();
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException();
+    if (user.phoneVerifiedAt) throw new BadRequestException();
+
+    const now = new Date();
+    const challenge = await this.prisma.otpChallenge.findUnique({ where: { userId } });
+    if (challenge) {
+      const allowedAfter = challenge.lastSentAt.getTime() + OTP_RESEND_DELAY_MILLISECONDS;
+      if (now.getTime() < allowedAfter) throw new HttpException('Too many requests', 429);
+    }
+
+    if (this.otpId.isConfigured) {
+      const externalId = challenge && !challenge.providerOtpId &&
+        challenge.providerStatus === 'requesting' && challenge.externalId
+        ? challenge.externalId
+        : randomUUID();
+      if (challenge) {
+        const changed = await this.prisma.otpChallenge.updateMany({
+          where: { id: challenge.id, lastSentAt: challenge.lastSentAt },
+          data: {
+            codeHash: null,
+            providerOtpId: null,
+            externalId,
+            providerStatus: 'requesting',
+            attempts: 0,
+            expiresAt: new Date(now.getTime() + OTP_TTL_MILLISECONDS),
+            lastSentAt: now,
+          },
+        });
+        if (changed.count !== 1) throw new HttpException('Too many requests', 429);
+      } else {
+        try {
+          await this.prisma.otpChallenge.create({
+            data: {
+              userId,
+              codeHash: null,
+              providerOtpId: null,
+              externalId,
+              providerStatus: 'requesting',
+              attempts: 0,
+              expiresAt: new Date(now.getTime() + OTP_TTL_MILLISECONDS),
+              lastSentAt: now,
+            },
+          });
+        } catch {
+          throw new HttpException('Too many requests', 429);
+        }
+      }
+      await this.requestAndSaveOtpIdChallenge(userId, user.phoneNumber, externalId);
+      return {};
+    }
+
+    const code = createOtpCode();
+    if (challenge) {
+      const changed = await this.prisma.otpChallenge.updateMany({
+        where: { id: challenge.id, lastSentAt: challenge.lastSentAt },
+        data: {
+          codeHash: this.hashOtp(userId, code),
+          providerOtpId: null,
+          externalId: null,
+          providerStatus: null,
+          attempts: 0,
+          expiresAt: new Date(now.getTime() + OTP_TTL_MILLISECONDS),
+          lastSentAt: now,
+        },
+      });
+      if (changed.count !== 1) throw new HttpException('Too many requests', 429);
+    } else {
+      try {
+        await this.prisma.otpChallenge.create({
+          data: {
+            userId,
+            codeHash: this.hashOtp(userId, code),
+            providerOtpId: null,
+            externalId: null,
+            providerStatus: null,
+            expiresAt: new Date(now.getTime() + OTP_TTL_MILLISECONDS),
+            lastSentAt: now,
+          },
+        });
+      } catch {
+        throw new HttpException('Too many requests', 429);
+      }
+    }
+    await this.otpSender.send(user.phoneNumber, code);
+    return this.config.appEnv === 'development' || this.config.appEnv === 'test'
+      ? { development_otp: code }
+      : {};
+  }
+
+  private async requestAndSaveOtpIdChallenge(userId: string, phoneNumber: string, externalId: string): Promise<void> {
+    const delivery = await this.otpId.requestPhoneOtp(phoneNumber, externalId);
+    const saved = await this.prisma.otpChallenge.updateMany({
+      where: { userId, externalId },
+      data: {
+        providerOtpId: delivery.otpId,
+        providerStatus: delivery.status,
+        expiresAt: delivery.expiresAt,
+      },
+    });
+    if (saved.count !== 1) throw new ServiceUnavailableException('OTP challenge could not be saved');
+    if (delivery.status === 'failed') {
+      throw new ServiceUnavailableException('OTP could not be delivered');
+    }
+  }
+
+  private ensureOtpProviderAvailable(): void {
+    if (this.config.appEnv === 'production' && !this.otpId.isConfigured) {
+      throw new ServiceUnavailableException('OTP provider is not configured');
+    }
+  }
+
+  private async consumeOtpChallenge(
+    userId: string,
+    challengeId: string,
+    now: Date,
+    match: { providerOtpId: string } | { codeHash: string; attempts: { lt: number } },
+  ): Promise<UserProfile> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const consumed = await tx.otpChallenge.deleteMany({
-          where: {
-            id: challenge.id,
-            codeHash: challenge.codeHash,
-            attempts: { lt: OTP_MAX_ATTEMPTS },
-            expiresAt: { gt: now },
-          },
+          where: { id: challengeId, expiresAt: { gt: now }, ...match },
         });
         if (consumed.count !== 1) throw new BadRequestException();
         const verified = await tx.user.update({
@@ -224,48 +374,6 @@ export class AuthService {
       if (error instanceof BadRequestException) throw error;
       throw new BadRequestException();
     }
-  }
-
-  async resendOtp(userId: string): Promise<{ development_otp?: string }> {
-    this.assertLocalOtpAllowed();
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException();
-    if (user.phoneVerifiedAt) throw new BadRequestException();
-
-    const code = createOtpCode();
-    const now = new Date();
-    const challenge = await this.prisma.otpChallenge.findUnique({ where: { userId } });
-    if (challenge) {
-      const allowedAfter = challenge.lastSentAt.getTime() + OTP_RESEND_DELAY_MILLISECONDS;
-      if (now.getTime() < allowedAfter) throw new HttpException('Too many requests', 429);
-      const changed = await this.prisma.otpChallenge.updateMany({
-        where: { id: challenge.id, lastSentAt: challenge.lastSentAt },
-        data: {
-          codeHash: this.hashOtp(userId, code),
-          attempts: 0,
-          expiresAt: new Date(now.getTime() + OTP_TTL_MILLISECONDS),
-          lastSentAt: now,
-        },
-      });
-      if (changed.count !== 1) throw new HttpException('Too many requests', 429);
-    } else {
-      try {
-        await this.prisma.otpChallenge.create({
-          data: {
-            userId,
-            codeHash: this.hashOtp(userId, code),
-            expiresAt: new Date(now.getTime() + OTP_TTL_MILLISECONDS),
-            lastSentAt: now,
-          },
-        });
-      } catch {
-        throw new HttpException('Too many requests', 429);
-      }
-    }
-    await this.otpSender.send(user.phoneNumber, code);
-    return this.config.appEnv === 'development' || this.config.appEnv === 'test'
-      ? { development_otp: code }
-      : {};
   }
 
   async authenticateAccessToken(token: string): Promise<AuthenticatedUser> {
@@ -321,9 +429,6 @@ export class AuthService {
     return otpDigest(userId, code, this.config.jwtRefreshSecret);
   }
 
-  private assertLocalOtpAllowed(): void {
-    if (this.config.appEnv === 'production') throw new ServiceUnavailableException();
-  }
 
   private toUserProfile(user: {
     id: string;

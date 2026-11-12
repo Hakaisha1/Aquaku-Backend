@@ -14,6 +14,7 @@ export interface RuntimeConfig {
   readonly cloudinaryApiKey?: string;
   readonly cloudinaryApiSecret?: string;
   readonly cloudinaryUploadPreset?: string;
+  readonly otpIdApiKey?: string;
 }
 
 export const RUNTIME_CONFIG = Symbol('RUNTIME_CONFIG');
@@ -122,6 +123,7 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
   const cloudinaryUploadPreset = env.CLOUDINARY_UPLOAD_PRESET;
   const cloudinaryConfigured = hasCloudinaryUrl || hasIndividualCloudinaryValues ||
     (cloudinaryUploadPreset !== undefined && cloudinaryUploadPreset !== '');
+  const otpIdApiKey = env.OTP_ID_API_KEY;
 
   if (!['development', 'test', 'production'].includes(appEnv)) fields.push('APP_ENV');
   if (!/^[0-9]+$/.test(port) || Number(port) < 1 || Number(port) > 65535) fields.push('PORT');
@@ -133,6 +135,8 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
   if (jwtRefreshSecret.length < 32) fields.push('JWT_REFRESH_SECRET');
   if (jwtAccessSecret && jwtAccessSecret === jwtRefreshSecret) fields.push('JWT_REFRESH_SECRET');
   if (env.CORS_ORIGIN !== undefined && corsOrigin === undefined) fields.push('CORS_ORIGIN');
+  if (appEnv === 'production' && !otpIdApiKey) fields.push('OTP_ID_API_KEY');
+  if (otpIdApiKey && !/^[a-zA-Z0-9-]{16,128}$/.test(otpIdApiKey)) fields.push('OTP_ID_API_KEY');
   if (cloudinaryConfigured) {
     if (hasCloudinaryUrl && (!parsedCloudinaryUrl || hasIndividualCloudinaryValues)) {
       fields.push('CLOUDINARY_URL');
@@ -168,5 +172,6 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
       cloudinaryApiSecret,
       cloudinaryUploadPreset,
     } : {}),
+    ...(otpIdApiKey ? { otpIdApiKey } : {}),
   });
 }
