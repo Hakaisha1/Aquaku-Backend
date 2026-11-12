@@ -123,6 +123,34 @@ describe('validateConfig', () => {
     });
   });
 
+  it('accepts Cloudinary credentials in the standard CLOUDINARY_URL format', () => {
+    const config = validateConfig({
+      ...base,
+      CLOUDINARY_URL: 'cloudinary://123456789012345:secret-value-long-enough@aquaku-cloud',
+      CLOUDINARY_UPLOAD_PRESET: 'aquaku_listing_images',
+    });
+    expect(config).toMatchObject({
+      cloudinaryCloudName: 'aquaku-cloud',
+      cloudinaryApiKey: '123456789012345',
+      cloudinaryApiSecret: 'secret-value-long-enough',
+      cloudinaryUploadPreset: 'aquaku_listing_images',
+    });
+  });
+
+  it('rejects malformed or mixed Cloudinary credential formats without exposing values', () => {
+    expect(() => validateConfig({
+      ...base,
+      CLOUDINARY_URL: 'https://private-user:private-secret@private-host',
+      CLOUDINARY_UPLOAD_PRESET: 'aquaku_listing_images',
+    })).toThrow('Invalid configuration fields: CLOUDINARY_URL');
+    expect(() => validateConfig({
+      ...base,
+      CLOUDINARY_URL: 'cloudinary://123456789012345:secret-value-long-enough@aquaku-cloud',
+      CLOUDINARY_API_KEY: '123456789012345',
+      CLOUDINARY_UPLOAD_PRESET: 'aquaku_listing_images',
+    })).toThrow('Invalid configuration fields: CLOUDINARY_URL');
+  });
+
   it('rejects partial or malformed Cloudinary configuration without exposing values', () => {
     expect(() => validateConfig({
       ...base,

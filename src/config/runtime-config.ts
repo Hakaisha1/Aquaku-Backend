@@ -53,6 +53,28 @@ function validDatabaseUrl(value: string): boolean {
   }
 }
 
+function parseCloudinaryUrl(value: string): {
+  cloudName: string;
+  apiKey: string;
+  apiSecret: string;
+} | undefined {
+  if (value.length > 2048 || /[\s\\\p{Cc}]/u.test(value)) return undefined;
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== 'cloudinary:' || !url.hostname || !url.username || !url.password ||
+      (url.pathname !== '' && url.pathname !== '/') || url.search || url.hash || url.port
+    ) return undefined;
+    return {
+      cloudName: url.hostname,
+      apiKey: decodeURIComponent(url.username),
+      apiSecret: decodeURIComponent(url.password),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 function parseCorsOrigin(value: string): string | undefined {
   if (
     value.length > 2048 || /[\s\\*\p{Cc}]/u.test(value) ||
@@ -85,12 +107,21 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
   const corsOrigin = env.CORS_ORIGIN === undefined
     ? undefined
     : parseCorsOrigin(env.CORS_ORIGIN);
-  const cloudinaryCloudName = env.CLOUDINARY_CLOUD_NAME;
-  const cloudinaryApiKey = env.CLOUDINARY_API_KEY;
-  const cloudinaryApiSecret = env.CLOUDINARY_API_SECRET;
+  const cloudinaryUrl = env.CLOUDINARY_URL;
+  const hasCloudinaryUrl = cloudinaryUrl !== undefined && cloudinaryUrl !== '';
+  const individualCloudinaryValues = [
+    env.CLOUDINARY_CLOUD_NAME,
+    env.CLOUDINARY_API_KEY,
+    env.CLOUDINARY_API_SECRET,
+  ];
+  const hasIndividualCloudinaryValues = individualCloudinaryValues.some((value) => value !== undefined && value !== '');
+  const parsedCloudinaryUrl = hasCloudinaryUrl ? parseCloudinaryUrl(cloudinaryUrl) : undefined;
+  const cloudinaryCloudName = parsedCloudinaryUrl?.cloudName ?? env.CLOUDINARY_CLOUD_NAME;
+  const cloudinaryApiKey = parsedCloudinaryUrl?.apiKey ?? env.CLOUDINARY_API_KEY;
+  const cloudinaryApiSecret = parsedCloudinaryUrl?.apiSecret ?? env.CLOUDINARY_API_SECRET;
   const cloudinaryUploadPreset = env.CLOUDINARY_UPLOAD_PRESET;
-  const cloudinaryValues = [cloudinaryCloudName, cloudinaryApiKey, cloudinaryApiSecret, cloudinaryUploadPreset];
-  const cloudinaryConfigured = cloudinaryValues.some((value) => value !== undefined && value !== '');
+  const cloudinaryConfigured = hasCloudinaryUrl || hasIndividualCloudinaryValues ||
+    (cloudinaryUploadPreset !== undefined && cloudinaryUploadPreset !== '');
 
   if (!['development', 'test', 'production'].includes(appEnv)) fields.push('APP_ENV');
   if (!/^[0-9]+$/.test(port) || Number(port) < 1 || Number(port) > 65535) fields.push('PORT');
@@ -103,14 +134,19 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
   if (jwtAccessSecret && jwtAccessSecret === jwtRefreshSecret) fields.push('JWT_REFRESH_SECRET');
   if (env.CORS_ORIGIN !== undefined && corsOrigin === undefined) fields.push('CORS_ORIGIN');
   if (cloudinaryConfigured) {
-    if (!cloudinaryCloudName || !/^[a-zA-Z0-9_-]{1,128}$/.test(cloudinaryCloudName)) {
-      fields.push('CLOUDINARY_CLOUD_NAME');
+    if (hasCloudinaryUrl && (!parsedCloudinaryUrl || hasIndividualCloudinaryValues)) {
+      fields.push('CLOUDINARY_URL');
     }
-    if (!cloudinaryApiKey || !/^[a-zA-Z0-9_-]{1,128}$/.test(cloudinaryApiKey)) {
-      fields.push('CLOUDINARY_API_KEY');
-    }
-    if (!cloudinaryApiSecret || cloudinaryApiSecret.length < 16 || cloudinaryApiSecret.length > 512 || /[\s\p{Cc}]/u.test(cloudinaryApiSecret)) {
-      fields.push('CLOUDINARY_API_SECRET');
+    if (!hasCloudinaryUrl || parsedCloudinaryUrl) {
+      if (!cloudinaryCloudName || !/^[a-zA-Z0-9_-]{1,128}$/.test(cloudinaryCloudName)) {
+        fields.push('CLOUDINARY_CLOUD_NAME');
+      }
+      if (!cloudinaryApiKey || !/^[a-zA-Z0-9_-]{1,128}$/.test(cloudinaryApiKey)) {
+        fields.push('CLOUDINARY_API_KEY');
+      }
+      if (!cloudinaryApiSecret || cloudinaryApiSecret.length < 16 || cloudinaryApiSecret.length > 512 || /[\s\p{Cc}]/u.test(cloudinaryApiSecret)) {
+        fields.push('CLOUDINARY_API_SECRET');
+      }
     }
     if (!cloudinaryUploadPreset || !/^[a-zA-Z0-9_-]{1,128}$/.test(cloudinaryUploadPreset)) {
       fields.push('CLOUDINARY_UPLOAD_PRESET');

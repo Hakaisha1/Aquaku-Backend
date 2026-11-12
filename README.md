@@ -209,10 +209,11 @@ Aplikasi memuat `.env` saat startup tanpa menimpa environment proses yang sudah 
 | `JWT_ACCESS_SECRET` | Development/test boleh kosong (secret acak per proses); production wajib minimal 32 karakter acak |
 | `JWT_REFRESH_SECRET` | Aturan sama, wajib berbeda dari access secret |
 | `CORS_ORIGIN` | Opsional; satu origin HTTP/HTTPS tanpa path/kredensial/wildcard; hapus variabel untuk menonaktifkan CORS, jangan isi string kosong |
-| `CLOUDINARY_CLOUD_NAME` | Opsional; harus diisi bersama seluruh variabel Cloudinary di bawah |
+| `CLOUDINARY_URL` | Opsional; format standar `cloudinary://<api_key>:<api_secret>@<cloud_name>`, alternatif untuk tiga variabel kredensial di bawah |
+| `CLOUDINARY_CLOUD_NAME` | Opsional; gunakan bersama `CLOUDINARY_API_KEY` dan `CLOUDINARY_API_SECRET` jika tidak memakai `CLOUDINARY_URL` |
 | `CLOUDINARY_API_KEY` | Opsional; kunci publik Cloudinary, dibutuhkan untuk signed upload |
 | `CLOUDINARY_API_SECRET` | Opsional; secret Cloudinary, tidak pernah dikirim ke klien atau log |
-| `CLOUDINARY_UPLOAD_PRESET` | Opsional; preset signed yang disiapkan dengan format JPEG/PNG/WebP dan batas 5 MB |
+| `CLOUDINARY_UPLOAD_PRESET` | Opsional; wajib bersama kredensial Cloudinary; preset signed yang membatasi format JPEG/PNG/WebP dan ukuran 5 MB |
 
 Contoh nilai development (bukan secret production):
 
@@ -223,7 +224,7 @@ API_PREFIX=/api/v1
 DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku
 ```
 
-Template `.env.example` memakai URL PostgreSQL development di port host 5433 dan tidak memuat konfigurasi MongoDB yang belum dipakai. Secret token development dibuat acak saat proses berjalan sehingga token tidak bertahan setelah restart. Untuk production, hasilkan dua secret berbeda dengan sumber acak yang aman dan jangan gunakan nilai contoh. Konfigurasi Cloudinary bersifat opsional dan harus lengkap: siapkan upload preset bertipe signed yang membatasi format dan ukuran file menjadi JPEG/PNG/WebP maksimal 5 MB. Backend tetap memeriksa format dan ukuran setelah upload; upload yang tidak sesuai akan ditolak dan diminta untuk dibersihkan dari Cloudinary.
+Template `.env.example` memakai URL PostgreSQL development di port host 5433 dan tidak memuat konfigurasi MongoDB yang belum dipakai. Secret token development dibuat acak saat proses berjalan sehingga token tidak bertahan setelah restart. Untuk production, hasilkan dua secret berbeda dengan sumber acak yang aman dan jangan gunakan nilai contoh. Konfigurasi Cloudinary bersifat opsional dan harus lengkap: isi `CLOUDINARY_URL` atau ketiga variabel kredensial terpisah, lalu siapkan `CLOUDINARY_UPLOAD_PRESET` bertipe signed yang membatasi format dan ukuran file menjadi JPEG/PNG/WebP maksimal 5 MB. Jangan isi kedua format kredensial sekaligus. Backend tetap memeriksa format dan ukuran setelah upload; upload yang tidak sesuai akan ditolak dan diminta untuk dibersihkan dari Cloudinary.
 
 Request menggunakan whitelist DTO dan menolak field asing. Payload JSON terlalu besar ditolak dengan `413`, encoding yang tidak didukung dengan `415`. Error HTTP memakai bentuk `{ "error": { "code": "...", "message": "..." } }`; detail exception internal tidak dikirim ke klien. Prefix, validasi, filter error, dan CORS diterapkan melalui konfigurasi aplikasi yang juga dipakai e2e test.
 
