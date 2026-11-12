@@ -20,10 +20,10 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 | M3 | Marketplace dan aturan listing | M2; keputusan wilayah dan lifecycle listing | Selesai |
 | M4 | Membership, add-on, dan admin | M3; keputusan lifecycle hak berbayar | Selesai |
 | M5 | Konfirmasi transaksi dan kepercayaan | M3; keputusan konfirmasi transaksi | Selesai |
-| M6 | Forum dan MongoDB | M4 dan M5 sebagai prioritas delivery | Belum dimulai |
+| M6 | Forum dan MongoDB | M4 dan M5 sebagai prioritas delivery | Selesai |
 | M7 | Kesiapan uji pengguna dan rilis | M4–M6 untuk MVP forum + marketplace | Belum dimulai |
 
-**Posisi saat ini:** M0–M5 selesai. Migrasi M5 sudah diterapkan ke database development dan test. Validasi akhir lulus: 127 unit test, 63 E2E test, dan 10 PostgreSQL integration test; build, TypeScript, lint, Prisma validation, dan pemeriksaan OpenAPI juga lulus. Target berikutnya adalah handoff internal marketplace ke tim frontend untuk integrasi dan QA, bukan rilis publik.
+**Posisi saat ini:** M0–M6 selesai. Forum sudah diuji dengan PostgreSQL dan MongoDB lokal. Tahap berikutnya M7: kesiapan deployment, QA pengguna, dan rilis; environment Railway tetap perlu diberi `MONGODB_URI`.
 
 ## 3. Checklist dan kriteria selesai
 
@@ -121,12 +121,12 @@ Dokumen ini mengatur urutan pengerjaan, pencatatan progres, kriteria selesai, da
 
 ### M6 — Forum dan MongoDB
 
-- [ ] Tambahkan MongoDB ke lingkungan development dan integrasikan Mongoose.
-- [ ] Implementasikan posting, kategori, foto, komentar, dan pagination.
-- [ ] Terapkan verifikasi HP untuk posting/komentar; konten publik tetap dapat dibaca.
-- [ ] Gunakan identitas PostgreSQL sebagai sumber kebenaran dan referensi di MongoDB.
-- [ ] Tambahkan laporan/moderasi posting serta uji otorisasi penulis dan admin.
-- [ ] Uji kegagalan MongoDB dan dokumentasikan kebutuhan menjalankan modul forum.
+- [x] Tambahkan MongoDB ke lingkungan development dan integrasikan Mongoose.
+- [x] Implementasikan posting, kategori, foto, komentar, dan pagination.
+- [x] Terapkan verifikasi HP untuk posting/komentar; konten publik tetap dapat dibaca.
+- [x] Gunakan identitas PostgreSQL sebagai sumber kebenaran dan referensi di MongoDB.
+- [x] Tambahkan laporan/moderasi posting serta otorisasi penulis/admin.
+- [x] Jalankan validasi akhir, uji alur/otorisasi pada database lokal, dan dokumentasikan kebutuhan `MONGODB_URI` Railway.
 
 **Selesai jika:** pengguna terverifikasi dapat membuat posting dan komentar dengan hak akses yang benar; forum tidak menjadikan MongoDB sumber kebenaran identitas/tier.
 
@@ -229,6 +229,7 @@ Dokumen ini **bukan izin otomatis untuk commit, membuat branch, atau push**. Jan
 | 2026-11-09 | M1 | `.env.example` diselaraskan ke URL PostgreSQL port 5433 dan variabel MongoDB dihapus; M1 ditutup | `npm run db:validate`, build, lint, unit test, dan e2e lulus pada validasi sesi; diff Git ditinjau karena file tidak dapat dibuka langsung oleh editor | Belum di-commit |
 | 2026-11-09 | M2 | Implementasi akun, autentikasi, token, profil, OTP, dan migrasi; migrasi diterapkan ke `aquaku` serta `aquaku_test` | 117 unit, 63 e2e, 7 integration test lulus; `db:status` menunjukkan database development up to date | Belum di-commit |
 | 2026-11-09 | M3 | Skema/migrasi marketplace, 177 kode kelurahan, kategori/tag, toko, listing, kuota/cooldown, expiry job, dan signed upload Cloudinary | 124 unit, 63 e2e, 8 integration test lulus; build/lint/schema validation lulus; migrasi diterapkan ke database development dan test; uji concurrency membuat tepat 5 listing dari 6 request | Belum di-commit |
+| 2026-11-12 | M6 | Tambahkan Mongoose/MongoDB, forum kategori/posting/komentar, signed foto Cloudinary, pagination, laporan, moderasi, dan readiness dua database | Compose PostgreSQL/MongoDB sehat; migrasi diterapkan ke `aquaku` dan `aquaku_test`; 149 unit, 64 e2e, 11 integration test, build/lint/Prisma validation, dan OpenAPI lulus. Forum real DB diuji untuk post/comment/report/moderation | Belum di-commit |
 
 ### Checkpoint M1
 

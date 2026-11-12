@@ -295,6 +295,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
         include: { listing: { select: { id: true, sellerId: true, condition: true, status: true, deletedAt: true } } },
       });
       if (!asset) throw new NotFoundException();
+      if (asset.forumPostId) throw new ConflictException('Photo is attached to a forum post');
       if (asset.listing) {
         if (asset.listing.sellerId !== user.id) throw new ForbiddenException();
         if (asset.listing.status === ListingStatus.ACTIVE && asset.listing.deletedAt === null) {
@@ -352,6 +353,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
           id: { in: input.photo_ids },
           ownerId: user.id,
           listingId: null,
+          forumPostId: null,
           uploadedAt: { not: null },
         },
         data: { listingId: listing.id },
@@ -412,11 +414,11 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
       });
       if (input.photo_ids !== undefined) {
         await tx.mediaAsset.updateMany({
-          where: { id: { in: photoIds }, ownerId: user.id, listingId: null, uploadedAt: { not: null } },
+          where: { id: { in: photoIds }, ownerId: user.id, listingId: null, forumPostId: null, uploadedAt: { not: null } },
           data: { listingId },
         });
         const attachedPhotos = await tx.mediaAsset.findMany({
-          where: { id: { in: photoIds }, ownerId: user.id, listingId, uploadedAt: { not: null } },
+          where: { id: { in: photoIds }, ownerId: user.id, listingId, forumPostId: null, uploadedAt: { not: null } },
           select: { id: true },
         });
         if (attachedPhotos.length !== photoIds.length) {
@@ -840,6 +842,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
         id: { in: [...photoIds] },
         ownerId,
         uploadedAt: { not: null },
+        forumPostId: null,
         bytes: { lte: maximumPhotoBytes },
         format: { in: ['jpg', 'jpeg', 'png', 'webp'] },
         OR: [{ listingId: null }, ...(listingId ? [{ listingId }] : [])],

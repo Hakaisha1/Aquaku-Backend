@@ -1,6 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import { randomInt, randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
+import { getConnectionToken } from '@nestjs/mongoose';
+import { createConnection, Types } from 'mongoose';
+import type { Connection } from 'mongoose';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/common/configure-app';
@@ -10,7 +13,11 @@ import { CLOUDINARY_CLIENT, CloudinaryClientPort } from '../src/marketplace/clou
 import { MarketplaceService } from '../src/marketplace/marketplace.service';
 
 function testConfig() {
-  const config = validateConfig({ APP_ENV: 'test', DATABASE_URL: process.env.TEST_DATABASE_URL });
+  const config = validateConfig({
+    APP_ENV: 'test',
+    DATABASE_URL: process.env.TEST_DATABASE_URL,
+    MONGODB_URI: process.env.TEST_MONGODB_URI ?? 'mongodb://127.0.0.1:27017/aquaku_test',
+  });
   if (!new URL(config.databaseUrl).pathname.endsWith('_test')) {
     throw new Error('TEST_DATABASE_URL must target a dedicated database ending in _test');
   }
@@ -48,6 +55,7 @@ describe('PostgreSQL integration', () => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(RUNTIME_CONFIG).useValue(testConfig())
       .overrideProvider(CLOUDINARY_CLIENT).useValue(fakeCloudinary).compile();
+    await module.get<Connection>(getConnectionToken()).asPromise();
     app = module.createNestApplication();
     configureApp(app);
     await app.init();
@@ -70,12 +78,14 @@ describe('PostgreSQL integration', () => {
       { migration_name: '20261108000000_initialize_schema' },
       { migration_name: '20261110100000_membership_addons_admin' },
       { migration_name: '20261110110000_marketplace_trust_m5' },
+      { migration_name: '20261112000000_otp_id_phone_verification' },
+      { migration_name: '20261112100000_forum_media' },
     ]));
   });
 
   it('reports real database readiness through HTTP', async () => {
     await request(app.getHttpServer()).get('/api/v1/health/ready').expect(200)
-      .expect({ data: { status: 'ready', checks: { database: 'up' } } });
+      .expect({ data: { status: 'ready', checks: { database: 'up', forum_database: 'up' } } });
   });
 
   it('completes account registration, login, OTP verification, refresh rotation, and profile access', async () => {
@@ -820,6 +830,114 @@ describe('PostgreSQL integration', () => {
     }
   });
 
+  it('stores forum content in MongoDB and enforces verified-user/admin workflows', async () => {
+    const createVerifiedSession = async (displayName: string) => {
+      const email = `${randomUUID()}@example.com`;
+      const registration = await request(app.getHttpServer())
+        .post('/api/v1/auth/register')
+        .send({
+          email,
+          password: 'correct horse battery staple',
+          display_name: displayName,
+          phone_number: `0812${randomInt(10_000_000, 99_999_999)}`,
+        })
+        .expect(201);
+      const id = registration.body.data.id as string;
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email, password: 'correct horse battery staple' })
+        .expect(200);
+      const accessToken = login.body.data.access_token as string;
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/verify-phone')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ code: registration.body.development_otp })
+        .expect(200);
+      return { id, accessToken };
+    };
+
+    const author = await createVerifiedSession('Forum Author');
+    const admin = await createVerifiedSession('Forum Moderator');
+    let categoryId: string | undefined;
+    let postId: string | undefined;
+    try {
+      await prisma.user.update({ where: { id: admin.id }, data: { role: 'ADMIN' } });
+      const createdCategory = await request(app.getHttpServer())
+        .post('/api/v1/forum/admin/categories')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ name: `Aquascape ${randomUUID().slice(0, 8)}`, description: 'Forum integration test' })
+        .expect(201);
+      categoryId = createdCategory.body.data.id as string;
+
+      const createdPost = await request(app.getHttpServer())
+        .post('/api/v1/forum/posts')
+        .set('Authorization', `Bearer ${author.accessToken}`)
+        .send({ category_id: categoryId, title: 'Tank update', body: 'Plants are growing well' })
+        .expect(201);
+      postId = createdPost.body.data.id as string;
+      expect(createdPost.body.data.author).toMatchObject({ id: author.id, display_name: 'Forum Author' });
+
+      await request(app.getHttpServer()).get('/api/v1/forum/posts').expect(200)
+        .expect(({ body }) => expect(body.data.items).toEqual(expect.arrayContaining([
+          expect.objectContaining({ id: postId, title: 'Tank update' }),
+        ])));
+      await request(app.getHttpServer())
+        .post(`/api/v1/forum/posts/${postId}/comments`)
+        .set('Authorization', `Bearer ${author.accessToken}`)
+        .send({ body: 'Thanks for sharing' })
+        .expect(201);
+      await request(app.getHttpServer()).get(`/api/v1/forum/posts/${postId}/comments`).expect(200)
+        .expect(({ body }) => expect(body.data.items).toEqual([
+          expect.objectContaining({ body: 'Thanks for sharing', author: expect.objectContaining({ id: author.id }) }),
+        ]));
+
+      const createdReport = await request(app.getHttpServer())
+        .post(`/api/v1/forum/posts/${postId}/reports`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ reason: 'other', details: 'Integration test report' })
+        .expect(201);
+      const reportId = createdReport.body.data.id as string;
+      await request(app.getHttpServer())
+        .post(`/api/v1/forum/admin/reports/${reportId}/review`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ decision: 'resolved', review_note: 'Reviewed in test' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/forum/admin/posts/${postId}/moderation`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ action: 'hide', reason: 'Test moderation' })
+        .expect(201);
+      await request(app.getHttpServer()).get(`/api/v1/forum/posts/${postId}`).expect(404);
+      await request(app.getHttpServer())
+        .post(`/api/v1/forum/admin/posts/${postId}/moderation`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ action: 'restore', reason: 'Restore test post' })
+        .expect(201);
+      await request(app.getHttpServer()).get(`/api/v1/forum/posts/${postId}`).expect(200);
+      await request(app.getHttpServer())
+        .get(`/api/v1/forum/admin/posts/${postId}/moderation`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200)
+        .expect(({ body }) => expect(body.data).toHaveLength(2));
+    } finally {
+      const mongo = app.get<Connection>(getConnectionToken());
+      if (postId) {
+        const postObjectId = new Types.ObjectId(postId);
+        await Promise.all([
+          mongo.collection('forum_comments').deleteMany({ postId: postObjectId }),
+          mongo.collection('forum_reports').deleteMany({ postId: postObjectId }),
+          mongo.collection('forum_moderation_actions').deleteMany({ postId: postObjectId }),
+          mongo.collection('forum_posts').deleteMany({ _id: postObjectId }),
+        ]);
+      }
+      if (categoryId) {
+        await mongo.collection('forum_categories').deleteOne({ _id: new Types.ObjectId(categoryId) });
+      }
+      await prisma.user.deleteMany({ where: { id: { in: [author.id, admin.id] } } });
+    }
+  });
+
   it('returns 503 for an unreachable database while liveness stays available', async () => {
     const config = testConfig();
     const unavailableUrl = new URL(config.databaseUrl);
@@ -827,7 +945,8 @@ describe('PostgreSQL integration', () => {
     unavailableUrl.port = '1';
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(RUNTIME_CONFIG)
-      .useValue(validateConfig({ APP_ENV: 'test', DATABASE_URL: unavailableUrl.toString() })).compile();
+      .useValue(validateConfig({ APP_ENV: 'test', DATABASE_URL: unavailableUrl.toString() }))
+      .overrideProvider(getConnectionToken()).useValue(createConnection()).compile();
     const unavailableApp = module.createNestApplication();
     configureApp(unavailableApp);
     await unavailableApp.init();

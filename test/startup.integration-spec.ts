@@ -10,7 +10,9 @@ function startupEnv(databaseUrl: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
     APP_ENV: 'test', API_PREFIX: '/api/v1', PORT: '3000',
-    DATABASE_URL: databaseUrl, CORS_ORIGIN: 'http://localhost:5173',
+    DATABASE_URL: databaseUrl,
+    MONGODB_URI: process.env.TEST_MONGODB_URI ?? 'mongodb://127.0.0.1:27017/aquaku_test',
+    CORS_ORIGIN: 'http://localhost:5173',
   };
 }
 
@@ -61,7 +63,7 @@ describe('Built application startup', () => {
           const response = await fetch(url, { signal: AbortSignal.timeout(1000) });
           if (response.ok) {
             expect(await response.json()).toEqual({
-              data: { status: 'ready', checks: { database: 'up' } },
+              data: { status: 'ready', checks: { database: 'up', forum_database: 'up' } },
             });
             ready = true;
             break;

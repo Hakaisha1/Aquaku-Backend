@@ -7,6 +7,7 @@ export interface RuntimeConfig {
   readonly port: number;
   readonly apiPrefix: string;
   readonly databaseUrl: string;
+  readonly mongoUri: string;
   readonly jwtAccessSecret: string;
   readonly jwtRefreshSecret: string;
   readonly corsOrigin?: string;
@@ -76,6 +77,22 @@ function parseCloudinaryUrl(value: string): {
   }
 }
 
+function validMongoUrl(value: string): boolean {
+  if (value.length > 4096 || /[\s\\\p{Cc}]/u.test(value)) return false;
+  try {
+    const url = new URL(value);
+    decodeURIComponent(value);
+    const databaseName = decodeURIComponent(url.pathname.slice(1));
+    return (
+      (url.protocol === 'mongodb:' || url.protocol === 'mongodb+srv:') &&
+      Boolean(url.hostname) && Boolean(databaseName) && !databaseName.includes('/') &&
+      !url.hash && (url.protocol !== 'mongodb+srv:' || !url.port)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function parseCorsOrigin(value: string): string | undefined {
   if (
     value.length > 2048 || /[\s\\*\p{Cc}]/u.test(value) ||
@@ -101,6 +118,7 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
   const port = env.PORT ?? '3000';
   const apiPrefix = env.API_PREFIX ?? '/api/v1';
   const databaseUrl = env.DATABASE_URL ?? '';
+  const mongoUri = env.MONGODB_URI ?? (appEnv === 'production' ? '' : 'mongodb://127.0.0.1:27017/aquaku');
   const jwtAccessSecret = env.JWT_ACCESS_SECRET ||
     (appEnv === 'production' ? '' : developmentAccessSecret);
   const jwtRefreshSecret = env.JWT_REFRESH_SECRET ||
@@ -131,6 +149,7 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
     fields.push('API_PREFIX');
   }
   if (!validDatabaseUrl(databaseUrl)) fields.push('DATABASE_URL');
+  if (!validMongoUrl(mongoUri)) fields.push('MONGODB_URI');
   if (jwtAccessSecret.length < 32) fields.push('JWT_ACCESS_SECRET');
   if (jwtRefreshSecret.length < 32) fields.push('JWT_REFRESH_SECRET');
   if (jwtAccessSecret && jwtAccessSecret === jwtRefreshSecret) fields.push('JWT_REFRESH_SECRET');
@@ -163,6 +182,7 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
     port: Number(port),
     apiPrefix,
     databaseUrl,
+    mongoUri,
     jwtAccessSecret,
     jwtRefreshSecret,
     ...(corsOrigin === undefined ? {} : { corsOrigin }),

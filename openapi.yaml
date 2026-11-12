@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Aquaku Backend API
-  version: 0.5.0
-  description: REST API akun, marketplace, membership, transaksi, rating, dan moderasi Aquaku.
+  version: 0.6.0
+  description: REST API akun, marketplace, forum, membership, transaksi, rating, dan moderasi Aquaku.
 servers:
   - url: https://aquaku-backend-staging.up.railway.app/api/v1
     description: Railway staging (default for Bruno)
@@ -798,6 +798,326 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /forum/categories:
+    get:
+      security: []
+      summary: Daftar kategori forum aktif
+      responses:
+        '200':
+          description: Daftar kategori aktif
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ForumCategory' }
+                required: [data]
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /forum/posts:
+    get:
+      security: []
+      summary: Daftar posting publik dengan pagination
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: category, in: query, schema: { type: string, maxLength: 96 } }
+      responses:
+        '200':
+          description: Halaman posting aktif
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ForumPostPageResponse' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      summary: Buat posting forum; memerlukan HP terverifikasi
+      description: photo_ids harus menunjuk asset Cloudinary terverifikasi milik pengguna. Unggah melalui endpoint forum media sebelum membuat posting.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category_id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+                title: { type: string, minLength: 3, maxLength: 160 }
+                body: { type: string, minLength: 1, maxLength: 20000 }
+                photo_ids:
+                  type: array
+                  maxItems: 8
+                  uniqueItems: true
+                  items: { type: string, format: uuid }
+              required: [category_id, title, body]
+      responses:
+        '201': { description: Posting dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/ForumPostResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /forum/posts/{postId}:
+    parameters:
+      - { name: postId, in: path, required: true, schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' } }
+    get:
+      security: []
+      summary: Detail posting publik
+      responses:
+        '200': { description: Posting, content: { application/json: { schema: { $ref: '#/components/schemas/ForumPostResponse' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    patch:
+      summary: Ubah posting milik sendiri
+      description: Memerlukan HP terverifikasi. Daftar foto tidak diubah melalui endpoint ini.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                category_id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+                title: { type: string, minLength: 3, maxLength: 160 }
+                body: { type: string, minLength: 1, maxLength: 20000 }
+      responses:
+        '200': { description: Posting diperbarui, content: { application/json: { schema: { $ref: '#/components/schemas/ForumPostResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      summary: Hapus posting milik sendiri
+      responses:
+        '200': { description: Posting dihapus }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /forum/posts/{postId}/comments:
+    parameters:
+      - { name: postId, in: path, required: true, schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' } }
+    get:
+      security: []
+      summary: Daftar komentar posting dengan pagination
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200': { description: Halaman komentar, content: { application/json: { schema: { $ref: '#/components/schemas/ForumCommentPageResponse' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      summary: Tambah komentar; memerlukan HP terverifikasi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                body: { type: string, minLength: 1, maxLength: 5000 }
+              required: [body]
+      responses:
+        '201': { description: Komentar ditambahkan, content: { application/json: { schema: { $ref: '#/components/schemas/ForumCommentResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /forum/posts/{postId}/comments/{commentId}:
+    delete:
+      summary: Hapus komentar milik sendiri
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' } }
+        - { name: commentId, in: path, required: true, schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' } }
+      responses:
+        '200': { description: Komentar dihapus }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /forum/posts/{postId}/reports:
+    post:
+      summary: Laporkan posting; memerlukan HP terverifikasi
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, enum: [spam, harassment, inappropriate, misinformation, other] }
+                details: { type: string, maxLength: 1000 }
+              required: [reason]
+      responses:
+        '201': { description: Laporan dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/ForumReportResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /forum/media/upload-signatures:
+    post:
+      summary: Minta signed upload untuk foto forum
+      description: Klien mengunggah langsung ke Cloudinary memakai parameter ini, lalu memanggil confirm-upload. Foto JPEG/PNG/WebP maksimal 5 MB.
+      responses:
+        '201':
+          description: Parameter signed upload dan ID aset lokal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      asset_id: { type: string, format: uuid }
+                      cloud_name: { type: string }
+                      api_key: { type: string }
+                      timestamp: { type: integer }
+                      public_id: { type: string }
+                      folder: { type: string, const: 'aquaku/forum' }
+                      allowed_formats: { type: string, const: 'jpg,png,webp' }
+                      upload_preset: { type: string }
+                      overwrite: { type: string, const: 'false' }
+                      signature: { type: string }
+                    required: [asset_id, cloud_name, api_key, timestamp, public_id, folder, allowed_formats, upload_preset, overwrite, signature]
+                required: [data]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /forum/media/confirm-upload:
+    post:
+      summary: Verifikasi upload foto forum
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                asset_id: { type: string, format: uuid }
+              required: [asset_id]
+      responses:
+        '201': { description: Aset foto terverifikasi, content: { application/json: { schema: { $ref: '#/components/schemas/ForumMediaAssetResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /forum/admin/categories:
+    post:
+      summary: Buat kategori forum (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 2, maxLength: 80 }
+                description: { type: string, maxLength: 300 }
+              required: [name]
+      responses:
+        '201': { description: Kategori dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/ForumCategoryResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /forum/admin/categories/{categoryId}:
+    patch:
+      summary: Aktifkan atau nonaktifkan kategori forum (admin)
+      parameters:
+        - { name: categoryId, in: path, required: true, schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { active: { type: boolean } }
+              required: [active]
+      responses:
+        '200': { description: Status kategori diperbarui, content: { application/json: { schema: { $ref: '#/components/schemas/ForumCategoryResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /forum/admin/posts:
+    get:
+      summary: Daftar posting hidden/deleted untuk moderasi (admin)
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200': { description: Halaman antrean moderasi, content: { application/json: { schema: { $ref: '#/components/schemas/ForumPostPageResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /forum/admin/posts/{postId}/moderation:
+    parameters:
+      - { name: postId, in: path, required: true, schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' } }
+    get:
+      summary: Riwayat moderasi posting (admin)
+      responses:
+        '200':
+          description: Riwayat tindakan admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/ForumModerationAction' } }
+                required: [data]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      summary: Hide atau restore posting (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action: { type: string, enum: [hide, restore] }
+                reason: { type: string, minLength: 3, maxLength: 500 }
+              required: [action, reason]
+      responses:
+        '201': { description: Tindakan moderasi dicatat }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /forum/admin/reports:
+    get:
+      summary: Daftar laporan forum (admin)
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: status, in: query, schema: { type: string, enum: [open, resolved, dismissed] } }
+      responses:
+        '200': { description: Halaman laporan forum, content: { application/json: { schema: { $ref: '#/components/schemas/ForumReportPageResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /forum/admin/reports/{reportId}/review:
+    post:
+      summary: Selesaikan atau dismiss laporan (admin)
+      parameters:
+        - { name: reportId, in: path, required: true, schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision: { type: string, enum: [resolved, dismissed] }
+                review_note: { type: string, maxLength: 1000 }
+              required: [decision]
+      responses:
+        '201': { description: Laporan ditinjau, content: { application/json: { schema: { $ref: '#/components/schemas/ForumReportResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -811,6 +1131,144 @@ components:
       required: true
       schema: { type: string, format: uuid }
   schemas:
+    ForumCategory:
+      type: object
+      properties:
+        id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+      required: [id, name, slug, description]
+    ForumCategoryResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/ForumCategory' } }
+      required: [data]
+    ForumAuthor:
+      type: [object, 'null']
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string }
+        avatar_url: { type: [string, 'null'], format: uri }
+      required: [id, display_name, avatar_url]
+    ForumPhoto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+      required: [id, url]
+    ForumMediaAssetResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            url: { type: [string, 'null'], format: uri }
+            format: { type: [string, 'null'] }
+            bytes: { type: [integer, 'null'] }
+            uploaded_at: { type: [string, 'null'], format: date-time }
+          required: [id, url, format, bytes, uploaded_at]
+      required: [data]
+    ForumPost:
+      type: object
+      properties:
+        id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        title: { type: string }
+        body: { type: string }
+        status: { type: string, enum: [published, hidden, deleted] }
+        category: { anyOf: [{ $ref: '#/components/schemas/ForumCategory' }, { type: 'null' }] }
+        author: { $ref: '#/components/schemas/ForumAuthor' }
+        photos: { type: array, items: { $ref: '#/components/schemas/ForumPhoto' } }
+        comments_count: { type: integer }
+        reports_count: { type: integer }
+        moderation_reason: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, title, body, status, category, author, photos, comments_count, reports_count, moderation_reason, created_at, updated_at]
+    ForumPostResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/ForumPost' } }
+      required: [data]
+    ForumPostPageResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            items: { type: array, items: { $ref: '#/components/schemas/ForumPost' } }
+            pagination: { $ref: '#/components/schemas/Pagination' }
+          required: [items, pagination]
+      required: [data]
+    ForumComment:
+      type: object
+      properties:
+        id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        post_id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        body: { type: string }
+        author: { $ref: '#/components/schemas/ForumAuthor' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, post_id, body, author, created_at, updated_at]
+    ForumCommentResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/ForumComment' } }
+      required: [data]
+    ForumCommentPageResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            items: { type: array, items: { $ref: '#/components/schemas/ForumComment' } }
+            pagination: { $ref: '#/components/schemas/Pagination' }
+          required: [items, pagination]
+      required: [data]
+    ForumReport:
+      type: object
+      properties:
+        id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        post_id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        reporter_id: { type: string, format: uuid }
+        reason: { type: string, enum: [spam, harassment, inappropriate, misinformation, other] }
+        details: { type: string }
+        status: { type: string, enum: [open, resolved, dismissed] }
+        reviewed_by: { type: [string, 'null'], format: uuid }
+        reviewed_at: { type: [string, 'null'], format: date-time }
+        review_note: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+      required: [id, post_id, reporter_id, reason, details, status, reviewed_by, reviewed_at, review_note, created_at]
+    ForumReportResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/ForumReport' } }
+      required: [data]
+    ForumReportPageResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            items: { type: array, items: { $ref: '#/components/schemas/ForumReport' } }
+            pagination: { $ref: '#/components/schemas/Pagination' }
+          required: [items, pagination]
+      required: [data]
+    ForumModerationAction:
+      type: object
+      properties:
+        id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        post_id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        admin_id: { type: string, format: uuid }
+        action: { type: string, enum: [hide, restore, delete] }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
+      required: [id, post_id, admin_id, action, reason, created_at]
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        pages: { type: integer }
+      required: [page, limit, total, pages]
     UserProfile:
       type: object
       properties:

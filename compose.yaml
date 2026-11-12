@@ -2,6 +2,20 @@ name: aquaku-backend
 
 # Development only: these credentials are public fixtures, not production secrets.
 services:
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
   postgres:
     image: postgres:17-bookworm
     restart: unless-stopped
@@ -22,3 +36,4 @@ services:
 
 volumes:
   postgres_data:
+  mongo_data:

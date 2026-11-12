@@ -18,5 +18,6 @@ import { MarketplaceTrustService } from './marketplace-trust.service';
     MarketplaceTrustService,
     { provide: CLOUDINARY_CLIENT, useClass: CloudinaryClient },
   ],
+  exports: [CLOUDINARY_CLIENT],
 })
 export class MarketplaceModule {}

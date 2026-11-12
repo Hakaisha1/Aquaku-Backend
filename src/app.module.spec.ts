@@ -1,5 +1,7 @@
 import { Inject, Injectable, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { getConnectionToken } from '@nestjs/mongoose';
+import { createConnection } from 'mongoose';
 import { AppModule } from './app.module';
 import { RUNTIME_CONFIG, RuntimeConfig } from './config/runtime-config';
 
@@ -23,7 +25,7 @@ describe('AppModule', () => {
   it('provides validated configuration globally through DI', async () => {
     const module = await Test.createTestingModule({
       imports: [AppModule, ConsumerModule],
-    }).compile();
+    }).overrideProvider(getConnectionToken()).useValue(createConnection()).compile();
     try {
       expect(module.get(AppModule)).toBeInstanceOf(AppModule);
       expect(module.get(ConfigConsumer).config).toBe(module.get(RUNTIME_CONFIG));
@@ -40,7 +42,8 @@ describe('AppModule', () => {
 
   it('fails module startup when runtime configuration is invalid', async () => {
     process.env.DATABASE_URL = 'invalid-secret-connection-string';
-    await expect(Test.createTestingModule({ imports: [AppModule] }).compile())
+    await expect(Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(getConnectionToken()).useValue(createConnection()).compile())
       .rejects.toThrow('Invalid configuration fields: DATABASE_URL');
   });
 });

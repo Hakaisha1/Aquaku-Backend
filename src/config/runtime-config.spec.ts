@@ -1,6 +1,7 @@
 import { ConfigValidationError, validateConfig } from './runtime-config';
 
 const databaseUrl = 'postgresql://aquaku:secret@localhost:5432/aquaku';
+const mongoUri = 'mongodb://127.0.0.1:27017/aquaku';
 const base = { DATABASE_URL: databaseUrl };
 
 describe('validateConfig', () => {
@@ -22,7 +23,9 @@ describe('validateConfig', () => {
       CORS_ORIGIN: 'https://example.com:443/',
       JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
       OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
+      MONGODB_URI: 'mongodb+srv://user:pass@cluster.example.com/aquaku?retryWrites=true',
     })).toMatchObject({
+      mongoUri: 'mongodb+srv://user:pass@cluster.example.com/aquaku?retryWrites=true',
       appEnv: 'production', port: 65535, apiPrefix: '/service/v2',
       databaseUrl: 'postgres://user:pass@[::1]:5432/aquaku?sslmode=require',
       jwtAccessSecret: 'a'.repeat(32), jwtRefreshSecret: 'b'.repeat(32),
@@ -36,6 +39,7 @@ describe('validateConfig', () => {
         JWT_ACCESS_SECRET: 'a'.repeat(32),
         JWT_REFRESH_SECRET: 'b'.repeat(32),
         OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
+        MONGODB_URI: mongoUri,
       }
       : {};
     expect(validateConfig({ ...base, APP_ENV, ...secrets }).appEnv).toBe(APP_ENV);
@@ -65,6 +69,11 @@ describe('validateConfig', () => {
     ['API_PREFIX', '/api/*'], ['API_PREFIX', '/api/with space'],
     ['API_PREFIX', `/${'a'.repeat(128)}`],
     ['DATABASE_URL', undefined], ['DATABASE_URL', ''],
+        ['MONGODB_URI', ''], ['MONGODB_URI', 'postgresql://localhost/aquaku'],
+        ['MONGODB_URI', 'mongodb:///aquaku'], ['MONGODB_URI', 'mongodb://localhost'],
+        ['MONGODB_URI', 'mongodb://localhost/aquaku#fragment'],
+        ['MONGODB_URI', 'mongodb://localhost/aquaku%ZZ'],
+        ['MONGODB_URI', 'mongodb+srv://cluster.example.com:27017/aquaku'],
     ['DATABASE_URL', 'https://localhost/aquaku'],
     ['DATABASE_URL', 'mysql://localhost/aquaku'],
     ['DATABASE_URL', 'file:///aquaku'],
@@ -170,20 +179,20 @@ describe('validateConfig', () => {
     })).toThrow('Invalid configuration fields: CLOUDINARY_CLOUD_NAME');
   });
 
-  it('requires distinct strong JWT secrets and an OTP.ID key in production', () => {
+  it('requires distinct strong JWT secrets, an OTP.ID key, and MongoDB URI in production', () => {
     expect(() => validateConfig({ ...base, APP_ENV: 'production' }))
-      .toThrow('Invalid configuration fields: JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, OTP_ID_API_KEY');
+      .toThrow('Invalid configuration fields: MONGODB_URI, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, OTP_ID_API_KEY');
     expect(() => validateConfig({
       ...base, APP_ENV: 'production',
       JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'a'.repeat(32),
-      OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
+      OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000', MONGODB_URI: mongoUri,
     })).toThrow('Invalid configuration fields: JWT_REFRESH_SECRET');
     expect(() => validateConfig({
       ...base,
       APP_ENV: 'production',
       JWT_ACCESS_SECRET: 'a'.repeat(32),
       JWT_REFRESH_SECRET: 'b'.repeat(32),
-      OTP_ID_API_KEY: 'private invalid key',
+      OTP_ID_API_KEY: 'private invalid key', MONGODB_URI: mongoUri,
     })).toThrow('Invalid configuration fields: OTP_ID_API_KEY');
   });
 

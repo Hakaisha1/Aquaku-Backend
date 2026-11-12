@@ -58,8 +58,25 @@ Sebagian besar response dibungkus dengan properti `data`. Timestamp dikirim seba
 | `POST /marketplace/admin/sales/{saleId}/correct-buyer` | Admin | Koreksi pembeli transaksi terkonfirmasi |
 | `GET /marketplace/admin/sales/{saleId}/corrections` | Admin | Audit koreksi pembeli |
 | `GET /users/{userId}` | Publik | Profil dan ringkasan rating penjual |
+| `GET /forum/categories` | Publik | Daftar kategori forum aktif |
+| `GET /forum/posts` | Publik | Feed posting dengan pagination/filter kategori |
+| `GET /forum/posts/{postId}` | Publik | Detail posting aktif dan foto terverifikasi |
+| `POST /forum/posts` | Login, HP terverifikasi | Buat posting; lampirkan asset foto terverifikasi opsional |
+| `PATCH /forum/posts/{postId}` | Penulis, HP terverifikasi | Ubah posting sendiri |
+| `DELETE /forum/posts/{postId}` | Penulis | Hapus posting sendiri |
+| `GET, POST /forum/posts/{postId}/comments` | Baca publik; tulis perlu HP terverifikasi | Baca/tambah komentar dengan pagination |
+| `DELETE /forum/posts/{postId}/comments/{commentId}` | Penulis komentar | Hapus komentar sendiri |
+| `POST /forum/posts/{postId}/reports` | Login, HP terverifikasi | Laporkan posting |
+| `POST /forum/media/upload-signatures`, `/forum/media/confirm-upload` | Login, HP terverifikasi | Signed upload dan validasi foto Cloudinary |
+| `POST /forum/admin/categories` | Admin | Tambah kategori forum |
+| `PATCH /forum/admin/categories/{categoryId}` | Admin | Aktif/nonaktifkan kategori forum |
+| `/forum/admin/posts`, `/forum/admin/posts/{postId}/moderation` | Admin | Antrean posting ter-moderasi dan riwayat hide/restore |
+| `GET /forum/admin/reports` | Admin | Antrean laporan forum |
+| `POST /forum/admin/reports/{reportId}/review` | Admin | Selesaikan atau dismiss laporan |
 
 Prefix `/api/v1` ditambahkan pada semua path di tabel. Endpoint membership, toko, media, kuota, dan hak akun tercantum di README serta OpenAPI.
+
+Konten forum disimpan di MongoDB; `authorId` merujuk UUID akun PostgreSQL, dan profil penulis dibaca dari PostgreSQL. Untuk upload foto, gunakan signed upload forum lalu konfirmasi asset sebelum mengirim `photo_ids` ketika membuat posting. Jangan mengirim URL foto bebas. Membaca forum tidak memerlukan login; membuat posting, komentar, dan laporan memerlukan login serta HP terverifikasi. Kategori awal dikelola admin melalui `POST /forum/admin/categories`. Backend memerlukan `MONGODB_URI` selain `DATABASE_URL`; tambahkan koneksi MongoDB terpisah pada environment Railway staging dan production.
 
 ## 3. Alur transaksi dan rating
 
@@ -206,7 +223,7 @@ Gunakan `RESTORE` untuk memulihkan listing. Listing tersembunyi tidak muncul di 
 - `404 Not Found`: resource tidak ditemukan atau listing tidak tersedia secara publik.
 - `409 Conflict`: transisi status tidak diizinkan, transaksi/laporan duplikat, OTP.ID menyatakan transaksi OTP sudah tidak dapat digunakan, atau rating tidak dapat diubah.
 - `429 Too Many Requests`: cooldown/batas OTP atau batas request tercapai; tunggu sebelum mencoba lagi.
-- `503 Service Unavailable`: provider OTP/layanan lain tidak tersedia atau konfigurasi server belum lengkap.
+- `503 Service Unavailable`: provider OTP/layanan lain tidak tersedia, MongoDB/PostgreSQL tidak siap, atau konfigurasi server belum lengkap.
 
 Jangan mengasumsikan semua error dapat dicoba ulang. Untuk `409`, refresh detail/riwayat terlebih dahulu dan tampilkan status terbaru. Bentuk response error mengikuti format error API yang digunakan backend.
 

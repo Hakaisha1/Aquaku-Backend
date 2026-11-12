@@ -12,7 +12,7 @@ export interface CloudinaryAsset {
 }
 
 export interface CloudinaryClientPort {
-  createUploadSignature(ownerId: string): {
+  createUploadSignature(ownerId: string, purpose?: 'listing' | 'forum'): {
     readonly cloudName: string;
     readonly apiKey: string;
     readonly timestamp: number;
@@ -42,11 +42,11 @@ export function cloudinarySignature(
 export class CloudinaryClient implements CloudinaryClientPort {
   constructor(@Inject(RUNTIME_CONFIG) private readonly config: RuntimeConfig) {}
 
-  createUploadSignature(ownerId: string) {
+  createUploadSignature(ownerId: string, purpose: 'listing' | 'forum' = 'listing') {
     const credentials = this.requireCredentials();
     const timestamp = Math.floor(Date.now() / 1000);
     const publicId = `aquaku_${ownerId.replaceAll('-', '')}_${randomUUID().replaceAll('-', '')}`;
-    const folder = 'aquaku/listings';
+    const folder = purpose === 'forum' ? 'aquaku/forum' : 'aquaku/listings';
     const allowedFormats = 'jpg,png,webp';
     const uploadPreset = credentials.uploadPreset;
     const signature = cloudinarySignature({

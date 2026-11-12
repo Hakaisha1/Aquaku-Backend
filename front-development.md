@@ -215,7 +215,18 @@ Moderasi listing hanya hide/restore, bukan suspend akun:
 
 Sembunyikan kontrol admin untuk pengguna non-admin, tetapi tetap tangani `403`. Jangan menyimpulkan laporan pengguna otomatis menangguhkan akun.
 
-## 10. Error dan sinkronisasi UI
+## 10. Forum
+
+Baca `GET /forum/categories`, `GET /forum/posts?page=1&limit=20`, dan detail/komentar tanpa token. Daftar kategori dikelola admin; jika masih kosong, minta admin membuat kategori terlebih dahulu.
+
+Untuk membuat posting atau komentar, user harus login dan HP terverifikasi. Alur posting dengan foto:
+
+1. Minta `POST /forum/media/upload-signatures` dengan Bearer token.
+2. Upload file langsung ke Cloudinary memakai parameter signature dari backend.
+3. Konfirmasi `POST /forum/media/confirm-upload` dengan `{ "asset_id": "<id dari signature>" }`.
+4. Kirim `POST /forum/posts` dengan `category_id`, `title`, `body`, dan opsional `photo_ids` berisi ID asset yang sudah dikonfirmasi.
+
+Backend memeriksa kepemilikan, format, dan ukuran foto; jangan mengirim URL foto bebas. `PATCH /forum/posts/{postId}` hanya untuk penulis dan tidak mengubah foto. Penulis dapat menghapus posting/komentarnya sendiri. Laporan dan hide/restore hanya dikelola admin melalui endpoint `/forum/admin/*`; tampilkan `409` jika laporan duplikat atau status moderasi sudah berubah.
 
 | HTTP | Perilaku yang disarankan |
 | --- | --- |
@@ -225,11 +236,11 @@ Sembunyikan kontrol admin untuk pengguna non-admin, tetapi tetap tangani `403`. 
 | `404` | Resource tidak ditemukan/tidak publik; arahkan kembali ke daftar atau tampilkan unavailable. |
 | `409` | State/kuota/duplikasi sudah berubah; refresh detail, quota, transaksi, atau antrean sebelum aksi berikutnya. |
 | `429` | Batas OTP/request tercapai; tampilkan waktu tunggu dan nonaktifkan aksi sementara. |
-| `503` | Integrasi atau layanan belum tersedia, misalnya Cloudinary/OTP; tampilkan pesan sementara dan jangan terus retry. |
+| `503` | Integrasi atau layanan belum tersedia, misalnya Cloudinary, OTP, MongoDB, atau PostgreSQL; tampilkan pesan sementara dan jangan terus retry. |
 
 Untuk mutasi yang timeout atau response-nya tidak diketahui, refresh data server sebelum mengulang. Ini mencegah tindakan ganda pada listing, laporan, pembayaran manual, dan transaksi.
 
-## 11. Checklist QA frontend
+## 12. Checklist QA frontend
 
 - [ ] Import `openapi.yaml` ke Bruno; server default mengarah ke Railway staging.
 - [ ] Endpoint publik regions/taxonomy/listings dapat dibuka tanpa token.
@@ -242,9 +253,10 @@ Untuk mutasi yang timeout atau response-nya tidak diketahui, refresh data server
 - [ ] Buyer yang benar dapat konfirmasi; penolakan tidak mengaktifkan listing; rating hanya setelah confirmed.
 - [ ] Rating duplikat dan laporan open duplikat menangani `409` tanpa membuat data ganda.
 - [ ] Role member/admin diuji; admin endpoints menolak member dengan `403`.
+- [ ] Forum dapat dibaca publik dengan pagination; posting, foto, komentar, laporan, dan moderasi sesuai hak akses.
 - [ ] Upload dan error Cloudinary diuji jika konfigurasi tersedia.
 - [ ] Tidak ada token, OTP, bukti transfer, atau secret yang ditulis ke log/analitik.
 
-## 12. Batasan sebelum production
+## 13. Batasan sebelum production
 
-Staging saat ini untuk QA internal dan memakai OTP.ID jika `OTP_ID_API_KEY` terpasang; pengujian pengiriman OTP dapat memakai kredit akun. Jangan gunakan data pengguna nyata atau membagikan OTP/token. Untuk production, pastikan `OTP_ID_API_KEY` sudah diisi pada environment Railway production secara terpisah dan tetap server-side. Rilis juga memerlukan kredensial/preset Cloudinary, verifikasi terbaru data wilayah Semarang, proteksi secret, dan tinjauan operasional/security. Lihat [`timeline.md`](timeline.md) untuk gerbang kesiapan rilis.
+Staging saat ini untuk QA internal dan memakai OTP.ID jika `OTP_ID_API_KEY` terpasang; pengujian pengiriman OTP dapat memakai kredit akun. Forum memerlukan `MONGODB_URI` di backend staging. Jangan gunakan data pengguna nyata atau membagikan OTP/token. Sebelum deploy production, isi `OTP_ID_API_KEY` dan `MONGODB_URI` pada environment Railway production secara terpisah dan tetap server-side. Rilis juga memerlukan kredensial/preset Cloudinary, verifikasi terbaru data wilayah Semarang, proteksi secret, dan tinjauan operasional/security. Lihat [`timeline.md`](timeline.md) untuk gerbang kesiapan rilis.

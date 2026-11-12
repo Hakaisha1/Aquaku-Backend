@@ -4,7 +4,7 @@ Backend untuk forum komunitas dan marketplace hobiis aquascape. Cakupan awal dib
 
 ## Status dan acuan
 
-**M1–M5:** selesai. Migrasi sudah diterapkan ke database development serta test. Marketplace kini mencakup transaksi dengan konfirmasi pembeli, rating, laporan, serta moderasi listing yang diaudit. Target setelah M5 adalah handoff internal ke tim frontend untuk integrasi dan QA marketplace—bukan rilis publik. OTP nyata, kredensial Cloudinary/preset, dan verifikasi data kode wilayah Semarang tetap menjadi prasyarat sebelum rilis production.
+**M1–M6:** selesai secara lokal. Forum MongoDB/Mongoose sudah mencakup kategori, posting, foto, komentar, laporan, dan moderasi. PostgreSQL tetap menjadi sumber kebenaran akun/marketplace dan kepemilikan asset. Sebelum deploy Railway, isi `MONGODB_URI` pada environment terkait; production juga memerlukan Cloudinary dan verifikasi data wilayah Semarang.
 
 - [`revision.md`](revision.md): keputusan sistem terbaru dan detail yang belum diputuskan.
 - [`timeline.md`](timeline.md): milestone, checklist progres, kriteria selesai, dan aturan commit atomik.
@@ -18,23 +18,23 @@ Jika ada perbedaan dengan konsep atau draft OpenAPI lama, ikuti `revision.md`. F
 | Komponen | Pilihan dan peran |
 | --- | --- |
 | Bahasa dan framework | TypeScript + NestJS, satu layanan backend modular |
-| PostgreSQL + Prisma | Akun, membership, toko, listing, kuota, cooldown, add-on, rating, dan laporan |
-| Docker | Lingkungan development, dimulai dengan PostgreSQL |
-| MongoDB + Mongoose | Forum dan data fleksibel, ditambahkan setelah prioritas marketplace |
+| PostgreSQL + Prisma | Akun, membership, toko, listing, kuota, cooldown, add-on, rating, laporan, dan kepemilikan asset media |
+| Docker | Lingkungan development PostgreSQL dan MongoDB |
+| MongoDB + Mongoose | Kategori, posting, komentar, laporan, dan moderasi forum |
 | Cloudinary | Media; database menyimpan URL dan metadata yang diperlukan |
 | REST + JSON | Prefix `/api/v1` |
 | JWT Bearer | Autentikasi; hak akses diperiksa oleh backend |
 
-PostgreSQL menjadi sumber kebenaran identitas dan tier. MongoDB, Cloudinary, serta pengiriman OTP nyata tidak menjadi prasyarat M1. Base URL lokal yang direncanakan adalah `http://localhost:3000/api/v1`.
+PostgreSQL menjadi sumber kebenaran identitas, tier, dan kepemilikan foto. Dokumen MongoDB menyimpan UUID user sebagai referensi; bukan sumber kebenaran akun. Base URL lokal adalah `http://localhost:3000/api/v1`.
 
 ## Cakupan MVP
 
 - Registrasi/login dengan email dan password, refresh token, serta profil pengguna.
 - Satu nomor HP per akun dan maksimal satu toko per akun.
-- Verifikasi HP wajib untuk memasang listing, posting, dan komentar; membaca konten publik tidak memerlukan verifikasi.
+- Verifikasi HP wajib untuk memasang listing, posting, komentar, dan laporan; membaca konten publik tidak memerlukan verifikasi.
 - Listing dengan tag kondisi, foto, pencarian, filter, kuota, masa tayang, dan cooldown.
 - Membership Personal, Toko, dan Juragan; upgrade/add-on melalui transfer dan persetujuan admin.
-- Forum dengan kategori, foto, posting, dan komentar pada tahap berikutnya.
+- Forum MongoDB dengan kategori admin-managed, foto Cloudinary, posting, komentar, pagination, laporan, dan moderasi posting.
 - Konfirmasi transaksi oleh pembeli sebelum pemberian rating; laporan dan moderasi admin.
 - Upload foto melalui signed upload Cloudinary dengan verifikasi ukuran, format, dan kepemilikan oleh backend.
 
@@ -62,9 +62,9 @@ Nilai tersebut menjadi baseline implementasi MVP, tetapi tetap perlu validasi bi
 
 Backend memvalidasi autentikasi, verifikasi HP, kelurahan Kota Semarang, tier, foto, cooldown, dan kuota. Second/Like New memerlukan minimal tiga foto; maksimal delapan foto per listing. Detail lifecycle dan daftar wilayah ada di `revision.md`.
 
-### API marketplace
+### API marketplace dan forum
 
-Semua endpoint memakai prefix `/api/v1`.
+Semua endpoint memakai prefix `/api/v1`. Endpoint forum publik membaca kategori/posting/komentar; untuk membuat posting dan komentar diperlukan login serta HP terverifikasi. Daftar kategori dikelola admin. Lihat [`openapi.yaml`](openapi.yaml) untuk seluruh rute forum.
 
 | Endpoint | Akses dan fungsi |
 | --- | --- |
@@ -111,7 +111,7 @@ Untuk upload foto listing, klien meminta signature, mengirim foto langsung ke en
 Gunakan **Node.js 24 LTS** (versi acuan `.nvmrc`: 24.22.2), **npm 11**, dan Docker Desktop dengan Linux containers. Dependency dikunci dalam `package-lock.json`. NestJS 11 dipakai agar toolchain CommonJS dan Jest tetap kompatibel.
 
 1. Jalankan `npm ci`.
-2. Jalankan `docker compose up -d --wait postgres`.
+2. Jalankan `docker compose up -d --wait postgres mongo`.
 3. Siapkan environment proses atau file `.env` sesuai tabel konfigurasi di bawah. Gunakan port host database **5433**; jangan mengandalkan nilai template env lama.
 4. Terapkan migrasi, build, lalu jalankan aplikasi:
 
@@ -130,32 +130,32 @@ npm run test:e2e
 npm run test:cov
 ```
 
-Unit/e2e test tidak memerlukan Docker/database aktif. Integration test terpisah memerlukan database test nyata; lihat bagian Prisma di bawah. Integration test juga menjalankan server hasil build dalam subprocess dengan waktu tunggu terbatas, lalu menghentikannya setelah pengujian.
+Unit test tidak memerlukan database aktif; E2E menggunakan double untuk MongoDB. Integration/startup test memerlukan PostgreSQL dan MongoDB test nyata yang sehat; lihat bagian database di bawah. Integration test juga menjalankan server hasil build dalam subprocess dengan waktu tunggu terbatas, lalu menghentikannya setelah pengujian.
 
 Override `multer` 2.5.0 menutup advisory DoS GHSA-q7qp-rjg7-q26m pada dependency transitif NestJS 11. Jangan menjalankan `npm audit fix --force` tanpa meninjau perubahan major. Temuan audit tooling development dicatat di timeline dan perlu ditinjau sebelum CI/rilis.
 
-## PostgreSQL development dengan Docker
+## PostgreSQL dan MongoDB development dengan Docker
 
 Jalankan Docker Desktop (Linux containers), lalu:
 
 ```sh
 docker compose config --quiet
-docker compose up -d --wait postgres
+docker compose up -d --wait postgres mongo
 docker compose ps
 docker compose exec -T postgres psql -U aquaku -d aquaku -c "SELECT 1;"
 ```
 
-Compose memakai PostgreSQL 17 dengan health check dan named volume `postgres_data`. Port database dipublikasikan hanya ke loopback host `127.0.0.1:5433` (port internal container tetap 5432). Jika port dipakai layanan lain, hentikan layanan tersebut atau sesuaikan mapping dan URL database secara bersamaan.
+Compose memakai PostgreSQL 17 dan MongoDB 8 dengan health check serta named volume terpisah. Port PostgreSQL dipublikasikan hanya ke `127.0.0.1:5433`; MongoDB ke `127.0.0.1:27017`. MongoDB lokal tidak memakai autentikasi dan hanya dipublikasikan ke loopback; jangan gunakan konfigurasi ini untuk production.
 
-URL development host: `postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku`. Kredensial ini fixture development yang sengaja publik; jangan gunakan untuk production. Docker Compose di tahap ini hanya menjalankan database, bukan aplikasi.
+URL development: `DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku` dan `MONGODB_URI=mongodb://127.0.0.1:27017/aquaku`. Nilai ini hanya untuk development lokal. Docker Compose menjalankan database, bukan aplikasi.
 
 ```sh
-docker compose stop postgres
-docker compose start postgres
+docker compose stop postgres mongo
+docker compose start postgres mongo
 docker compose down
 ```
 
-`down` mempertahankan named volume. **`docker compose down -v` menghapus data database development**; jangan gunakan tanpa sengaja. Image dikunci ke major PostgreSQL 17; patch dapat berubah saat image ditarik ulang, bukan jaminan digest identik.
+`down` mempertahankan named volume. **`docker compose down -v` menghapus data PostgreSQL dan MongoDB development**; jangan gunakan tanpa sengaja. Image dikunci ke major PostgreSQL 17 dan MongoDB 8; patch dapat berubah saat image ditarik ulang.
 
 ## Prisma dan migrasi
 
@@ -192,9 +192,9 @@ Pada PowerShell/CMD, set environment menggunakan sintaks shell tersebut sebelum 
 | Endpoint | Perilaku |
 | --- | --- |
 | `GET /api/v1/health/live` | `200`, `{ "data": { "status": "ok" } }`; tidak mengakses database |
-| `GET /api/v1/health/ready` | `200` jika query PostgreSQL berhasil; `503` dengan error tersanitasi jika gagal |
+| `GET /api/v1/health/ready` | `200` jika PostgreSQL dan MongoDB berhasil di-ping; `503` dengan error tersanitasi jika salah satu gagal |
 
-Koneksi Prisma lazy agar aplikasi tetap dapat memberikan liveness saat database mati. Pool dan waktu tunggu koneksi/query dibatasi; shutdown aplikasi menutup client. URL readiness tidak mengungkap host, kredensial, atau pesan error database. Jika `API_PREFIX` diubah, prefix health ikut berubah.
+Koneksi database lazy agar aplikasi tetap dapat memberikan liveness saat database mati. Readiness mem-ping PostgreSQL dan MongoDB; jika salah satu gagal, endpoint mengembalikan `503`. URL readiness tidak mengungkap host, kredensial, atau pesan error database. Jika `API_PREFIX` diubah, prefix health ikut berubah.
 
 ## Konfigurasi dan keamanan development
 
@@ -206,6 +206,7 @@ Aplikasi memuat `.env` saat startup tanpa menimpa environment proses yang sudah 
 | `PORT` | Integer 1–65535; default `3000` |
 | `API_PREFIX` | Path tanpa trailing slash; default `/api/v1` |
 | `DATABASE_URL` | Wajib, URL PostgreSQL dengan host dan nama database |
+| `MONGODB_URI` | URL MongoDB; default development/test `mongodb://127.0.0.1:27017/aquaku`, wajib di production |
 | `JWT_ACCESS_SECRET` | Development/test boleh kosong (secret acak per proses); production wajib minimal 32 karakter acak |
 | `JWT_REFRESH_SECRET` | Aturan sama, wajib berbeda dari access secret |
 | `OTP_ID_API_KEY` | Wajib di production; API key OTP.ID hanya digunakan dari backend. Jika di development/test tidak diisi, OTP lokal digunakan |
@@ -223,9 +224,10 @@ APP_ENV=development
 PORT=3000
 API_PREFIX=/api/v1
 DATABASE_URL=postgresql://aquaku:aquaku_dev_password@127.0.0.1:5433/aquaku
+MONGODB_URI=mongodb://127.0.0.1:27017/aquaku
 ```
 
-Template `.env.example` memakai URL PostgreSQL development di port host 5433 dan tidak memuat konfigurasi MongoDB yang belum dipakai. Secret token development dibuat acak saat proses berjalan sehingga token tidak bertahan setelah restart. Untuk production, hasilkan dua secret berbeda dengan sumber acak yang aman dan jangan gunakan nilai contoh. Konfigurasi Cloudinary bersifat opsional dan harus lengkap: isi `CLOUDINARY_URL` atau ketiga variabel kredensial terpisah, lalu siapkan `CLOUDINARY_UPLOAD_PRESET` bertipe signed yang membatasi format dan ukuran file menjadi JPEG/PNG/WebP maksimal 5 MB. Jangan isi kedua format kredensial sekaligus. Backend tetap memeriksa format dan ukuran setelah upload; upload yang tidak sesuai akan ditolak dan diminta untuk dibersihkan dari Cloudinary.
+Konfigurasi development memakai PostgreSQL host port 5433 dan MongoDB host port 27017. Secret token development dibuat acak saat proses berjalan sehingga token tidak bertahan setelah restart. Untuk production, hasilkan dua secret berbeda dengan sumber acak yang aman dan jangan gunakan nilai contoh. Konfigurasi Cloudinary bersifat opsional dan harus lengkap: isi `CLOUDINARY_URL` atau ketiga variabel kredensial terpisah, lalu siapkan `CLOUDINARY_UPLOAD_PRESET` bertipe signed yang membatasi format dan ukuran file menjadi JPEG/PNG/WebP maksimal 5 MB. Jangan isi kedua format kredensial sekaligus. Backend tetap memeriksa format dan ukuran setelah upload; upload yang tidak sesuai akan ditolak dan diminta untuk dibersihkan dari Cloudinary.
 
 Request menggunakan whitelist DTO dan menolak field asing. Payload JSON terlalu besar ditolak dengan `413`, encoding yang tidak didukung dengan `415`. Error HTTP memakai bentuk `{ "error": { "code": "...", "message": "..." } }`; detail exception internal tidak dikirim ke klien. Prefix, validasi, filter error, dan CORS diterapkan melalui konfigurasi aplikasi yang juga dipakai e2e test.
 

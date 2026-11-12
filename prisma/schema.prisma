@@ -258,6 +258,7 @@ model MediaAsset {
   id         String    @id @default(uuid()) @db.Uuid
   ownerId    String    @map("owner_id") @db.Uuid
   listingId  String?   @map("listing_id") @db.Uuid
+  forumPostId String? @map("forum_post_id") @db.VarChar(24)
   publicId   String    @unique @map("public_id") @db.VarChar(255)
   secureUrl  String?   @map("secure_url") @db.VarChar(2048)
   format     String?   @db.VarChar(8)
@@ -269,6 +270,7 @@ model MediaAsset {
   listing    Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
 
   @@index([ownerId, listingId])
+  @@index([ownerId, forumPostId])
   @@index([signedAt])
   @@map("media_assets")
 }

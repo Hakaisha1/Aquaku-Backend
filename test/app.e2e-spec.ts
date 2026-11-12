@@ -2,6 +2,8 @@ import {
   Body, Controller, Get, HttpException, INestApplication, Param, Post,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { getConnectionToken } from '@nestjs/mongoose';
+import { createConnection } from 'mongoose';
 import { IsInt, IsString, Max, Min, MinLength } from 'class-validator';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -48,12 +50,15 @@ describe.each([
   beforeAll(async () => {
     const config = validateConfig({
       APP_ENV: 'production', DATABASE_URL: 'postgresql://localhost/aquaku_test',
+      MONGODB_URI: 'mongodb://localhost/aquaku_test',
       JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
+      OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
       ...(origin === undefined ? {} : { CORS_ORIGIN: origin }),
     });
     const module = await Test.createTestingModule({
       imports: [AppModule], controllers: [HttpTestController],
-    }).overrideProvider(RUNTIME_CONFIG).useValue(config).compile();
+    }).overrideProvider(RUNTIME_CONFIG).useValue(config)
+      .overrideProvider(getConnectionToken()).useValue(createConnection()).compile();
     app = module.createNestApplication();
     configureApp(app);
     await app.init();

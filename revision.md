@@ -6,9 +6,9 @@ Dokumen ini merangkum keputusan hasil pembahasan untuk menjadi acuan implementas
 
 - Backend untuk forum komunitas dan marketplace aquascape.
 - Peluncuran awal dibatasi oleh sistem untuk **Kota Semarang**, bukan Kabupaten Semarang.
-- Fokus implementasi pertama adalah PostgreSQL dan fitur utama akun/marketplace.
-- Forum berbasis MongoDB menyusul; tidak menjadi prasyarat tahap fondasi.
-- Dokumen ini adalah spesifikasi, bukan pernyataan bahwa fitur sudah diimplementasikan.
+- Fondasi akun/marketplace PostgreSQL telah selesai; integrasi forum MongoDB/Mongoose berada pada milestone M6.
+- Status checklist dan validasi implementasi terbaru dicatat di `timeline.md` dan `README.md`.
+- Dokumen ini menjadi acuan keputusan sistem; fitur yang belum disebut sebagai tersedia tetap dianggap belum diimplementasikan.
 
 ## 2. Stack dan arsitektur
 
@@ -18,8 +18,8 @@ Dokumen ini merangkum keputusan hasil pembahasan untuk menjadi acuan implementas
 | Framework backend | NestJS |
 | Database utama | PostgreSQL |
 | ORM PostgreSQL | Prisma |
-| Database forum, tahap berikutnya | MongoDB dengan Mongoose |
-| Lingkungan development | Docker, termasuk PostgreSQL |
+| Database forum | MongoDB dengan Mongoose |
+| Lingkungan development | Docker, PostgreSQL dan MongoDB |
 | Kontrak API | REST + JSON dengan prefix `/api/v1` |
 | Autentikasi | JWT Bearer sesuai draft OpenAPI |
 | Media | Cloudinary, integrasi pada tahap upload |
@@ -29,10 +29,10 @@ Mulai dari satu layanan backend modular, bukan microservices. PostgreSQL menjadi
 ### Pembagian data
 
 - **PostgreSQL:** akun, membership, toko dan verifikasinya, listing, tag, kuota, cooldown, pembelian add-on, rating, laporan, dan catatan persetujuan admin.
-- **MongoDB, tahap berikutnya:** posting forum, komentar, dan tank profile jika fitur tersebut dipilih.
-- **Cloudinary:** file media; database menyimpan URL dan metadata yang diperlukan.
+- **MongoDB:** kategori, posting, komentar, laporan, dan jejak moderasi forum. Tank profile belum menjadi cakupan.
+- **Cloudinary:** foto forum/listing; PostgreSQL mencatat kepemilikan dan metadata asset, MongoDB merujuk ID asset pada posting.
 
-Dokumen MongoDB merujuk ID pengguna/listing dari PostgreSQL. Salinan data tampilan di MongoDB tidak menggantikan sumber kebenaran PostgreSQL.
+Dokumen MongoDB merujuk UUID pengguna PostgreSQL. Profil penulis dibaca dari PostgreSQL; salinan data MongoDB tidak menggantikan sumber kebenaran identitas/tier.
 
 ## 3. Akun dan autentikasi
 
@@ -243,12 +243,11 @@ Saat hak berkurang, listing BNIB/New dinonaktifkan lebih dulu jika tier menjadi 
 
 ## 11. Forum, media, dan fitur berikutnya
 
-- Forum: posting, kategori, foto, dan komentar setelah fondasi marketplace siap.
-- Verifikasi HP wajib untuk posting dan komentar.
-- Integrasi media menggunakan Cloudinary, bukan mengasumsikan mekanisme presigned URL S3 dalam draft YAML cocok tanpa perubahan.
-- Detail signed upload, pembatasan tipe/ukuran file, serta otorisasi penghapusan media ditentukan saat modul upload dibuat.
-- Tank profile merupakan kandidat fitur unggulan, belum kewajiban tahap fondasi.
-- OAuth, MongoDB, Midtrans, dan provider OTP nyata tidak dimasukkan ke implementasi fondasi hanya karena disebut dalam rencana.
+- Forum menyediakan kategori yang dikelola admin, posting, foto Cloudinary, komentar, pagination, laporan, dan moderasi posting hide/restore.
+- Membaca konten forum bersifat publik; membuat posting, komentar, atau laporan memerlukan HP terverifikasi.
+- Foto memakai signed upload Cloudinary dan verifikasi backend atas kepemilikan, format JPEG/PNG/WebP, serta batas ukuran 5 MB.
+- MongoDB menyimpan konten; UUID dan profil pengguna tetap bersumber dari PostgreSQL.
+- OAuth, Midtrans, dan tank profile belum menjadi cakupan implementasi.
 
 ## 12. Tahapan implementasi
 
