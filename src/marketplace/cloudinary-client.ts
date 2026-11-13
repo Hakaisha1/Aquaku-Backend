@@ -17,7 +17,7 @@ export interface CloudinaryClientPort {
     readonly apiKey: string;
     readonly timestamp: number;
     readonly publicId: string;
-    readonly folder: string;
+    readonly assetFolder: string;
     readonly allowedFormats: string;
     readonly uploadPreset: string;
     readonly overwrite: 'false';
@@ -46,12 +46,12 @@ export class CloudinaryClient implements CloudinaryClientPort {
     const credentials = this.requireCredentials();
     const timestamp = Math.floor(Date.now() / 1000);
     const publicId = `aquaku_${ownerId.replaceAll('-', '')}_${randomUUID().replaceAll('-', '')}`;
-    const folder = purpose === 'forum' ? 'aquaku/forum' : 'aquaku/listings';
+    const assetFolder = purpose === 'forum' ? 'aquaku/forum' : 'aquaku/listings';
     const allowedFormats = 'jpg,png,webp';
     const uploadPreset = credentials.uploadPreset;
     const signature = cloudinarySignature({
       allowed_formats: allowedFormats,
-      folder,
+      asset_folder: assetFolder,
       public_id: publicId,
       timestamp,
       upload_preset: uploadPreset,
@@ -62,7 +62,7 @@ export class CloudinaryClient implements CloudinaryClientPort {
       apiKey: credentials.apiKey,
       timestamp,
       publicId,
-      folder,
+      assetFolder,
       allowedFormats,
       uploadPreset,
       overwrite: 'false' as const,

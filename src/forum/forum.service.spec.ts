@@ -101,6 +101,55 @@ describe('ForumService', () => {
     expect(connection.readyState).toBe(1);
   });
 
+  it('writes a normalized forum post to the MongoDB model', async () => {
+    const { service, categories, posts, prisma, categoryId, postId } = setup();
+    const category = { _id: categoryId, name: 'Tanaman', slug: 'tanaman', description: '' };
+    const created = {
+      _id: postId,
+      authorId: 'author-uuid',
+      categoryId,
+      title: 'Tank update',
+      body: 'Plant growth update',
+      photoAssetIds: [],
+      status: 'published',
+      commentsCount: 0,
+      reportsCount: 0,
+      moderationReason: null,
+      createdAt: new Date('2026-11-12T00:00:00.000Z'),
+      updatedAt: new Date('2026-11-12T00:00:00.000Z'),
+      toObject: jest.fn(),
+    };
+    categories.findOne.mockReturnValue(queryResult({ _id: categoryId }));
+    categories.find.mockReturnValue(queryResult([category]));
+    posts.create.mockResolvedValue({ ...created, toObject: () => created });
+    prisma.user.findMany.mockResolvedValue([{
+      id: 'author-uuid', displayName: 'Nadia', avatarUrl: null,
+    }]);
+
+    const result = await service.createPost(
+      { id: 'author-uuid' } as never,
+      { category_id: String(categoryId), title: ' Tank update ', body: ' Plant growth update ' },
+    );
+
+    expect(posts.create).toHaveBeenCalledWith({
+      authorId: 'author-uuid',
+      categoryId,
+      title: 'Tank update',
+      body: 'Plant growth update',
+      photoAssetIds: [],
+    });
+    expect(result).toMatchObject({
+      id: String(postId),
+      title: 'Tank update',
+      body: 'Plant growth update',
+      status: 'published',
+      category: { id: String(categoryId), name: 'Tanaman', slug: 'tanaman' },
+      author: { id: 'author-uuid', display_name: 'Nadia' },
+      photos: [],
+    });
+    expect(prisma.mediaAsset.updateMany).not.toHaveBeenCalled();
+  });
+
   it('persists a post only with owned confirmed photos and resolves its author from PostgreSQL', async () => {
     const { service, categories, posts, prisma, categoryId, postId } = setup();
     const assetId = '6b91e024-09f6-4b45-bca7-ff623af4c57c';

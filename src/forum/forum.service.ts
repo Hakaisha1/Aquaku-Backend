@@ -261,7 +261,7 @@ export class ForumService {
       api_key: signature.apiKey,
       timestamp: signature.timestamp,
       public_id: signature.publicId,
-      folder: signature.folder,
+      asset_folder: signature.assetFolder,
       allowed_formats: signature.allowedFormats,
       upload_preset: signature.uploadPreset,
       overwrite: signature.overwrite,

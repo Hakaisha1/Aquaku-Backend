@@ -804,12 +804,12 @@ paths:
                       api_key: { type: string }
                       timestamp: { type: integer }
                       public_id: { type: string }
-                      folder: { type: string }
+                      asset_folder: { type: string, const: 'aquaku/listings' }
                       allowed_formats: { type: string, const: 'jpg,png,webp' }
                       upload_preset: { type: string }
                       overwrite: { type: string, const: 'false' }
                       signature: { type: string }
-                    required: [asset_id, cloud_name, api_key, timestamp, public_id, folder, allowed_formats, upload_preset, overwrite, signature]
+                    required: [asset_id, cloud_name, api_key, timestamp, public_id, asset_folder, allowed_formats, upload_preset, overwrite, signature]
                 required: [data]
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1024,12 +1024,12 @@ paths:
                       api_key: { type: string }
                       timestamp: { type: integer }
                       public_id: { type: string }
-                      folder: { type: string, const: 'aquaku/forum' }
+                      asset_folder: { type: string, const: 'aquaku/forum' }
                       allowed_formats: { type: string, const: 'jpg,png,webp' }
                       upload_preset: { type: string }
                       overwrite: { type: string, const: 'false' }
                       signature: { type: string }
-                    required: [asset_id, cloud_name, api_key, timestamp, public_id, folder, allowed_formats, upload_preset, overwrite, signature]
+                    required: [asset_id, cloud_name, api_key, timestamp, public_id, asset_folder, allowed_formats, upload_preset, overwrite, signature]
                 required: [data]
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
