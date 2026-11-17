@@ -76,7 +76,22 @@ Sebagian besar response dibungkus dengan properti `data`. Timestamp dikirim seba
 
 Prefix `/api/v1` ditambahkan pada semua path di tabel. Endpoint membership, toko, media, kuota, dan hak akun tercantum di README serta OpenAPI.
 
-Konten forum disimpan di MongoDB; `authorId` merujuk UUID akun PostgreSQL, dan profil penulis dibaca dari PostgreSQL. Untuk upload foto, gunakan signed upload forum lalu konfirmasi asset sebelum mengirim `photo_ids` ketika membuat posting. Jangan mengirim URL foto bebas. Membaca forum tidak memerlukan login; membuat posting, komentar, dan laporan memerlukan login serta HP terverifikasi. Kategori awal dikelola admin melalui `POST /forum/admin/categories`. Backend memerlukan `MONGODB_URI` selain `DATABASE_URL`; tambahkan koneksi MongoDB terpisah pada environment Railway staging dan production.
+Konten forum disimpan di MongoDB; `authorId` merujuk UUID akun PostgreSQL, dan profil penulis dibaca dari PostgreSQL. Membaca forum tidak memerlukan login; membuat posting, komentar, dan laporan memerlukan login serta HP terverifikasi. Kategori awal dikelola admin melalui `POST /forum/admin/categories`. Backend memerlukan `MONGODB_URI` selain `DATABASE_URL`; tambahkan koneksi MongoDB terpisah pada environment Railway staging dan production.
+
+#### Upload foto untuk frontend
+
+Gunakan endpoint signature/konfirmasi berdasarkan tujuan upload:
+
+| Tujuan | Signature | Confirm | Folder Cloudinary |
+| --- | --- | --- | --- |
+| Foto listing | `POST /api/v1/marketplace/media/upload-signatures` | `POST /api/v1/marketplace/media/confirm-upload` | `aquaku/listings` |
+| Foto posting forum | `POST /api/v1/forum/media/upload-signatures` | `POST /api/v1/forum/media/confirm-upload` | `aquaku/forum` |
+
+Kedua endpoint signature dan confirm memerlukan Bearer token akun dengan HP terverifikasi. Setelah meminta signature, frontend harus mengirim `file` dan semua field dari `data` response yang signed ke `https://api.cloudinary.com/v1_1/{cloud_name}/image/upload`: `api_key`, `timestamp`, `public_id`, `asset_folder`, `allowed_formats`, `upload_preset`, `overwrite`, dan `signature`. Pakai nilai apa adanya; jangan mengganti `asset_folder` menjadi `folder`, jangan menyusun signature sendiri, dan jangan mengirim `CLOUDINARY_API_SECRET` ke browser. `cloud_name` dipakai untuk membentuk URL upload. Untuk browser `FormData`, jangan set `Content-Type` manual.
+
+Setelah upload Cloudinary berhasil, panggil endpoint confirm pasangannya dengan Bearer token dan body `{"asset_id":"<asset_id dari signature>"}`. Kirim `data.id` dari response confirm sebagai `photo_ids` saat membuat listing atau posting; jangan kirim Cloudinary `public_id` atau URL. Implementasi JavaScript dan pemeriksaan error lebih lengkap ada di [`front-development.md`](front-development.md).
+
+Cloudinary `403` dengan pesan permission `create` berarti API key backend belum mendapat role Contributor pada folder tujuan (`aquaku/listings` atau `aquaku/forum`); ini konfigurasi Cloudinary per-folder, bukan tindakan frontend. Untuk QA Windows, `scripts/test-marketplace-cloudinary-upload.bat` menguji upload marketplace dan `scripts/test-cloudinary-upload.bat` menguji forum. Grant role marketplace staging dapat diperiksa/diberikan dengan `scripts/grant-cloudinary-listings-folder-role.bat`; jalankan hanya dengan kredensial Admin API yang berwenang.
 
 ## 3. Alur transaksi dan rating
 

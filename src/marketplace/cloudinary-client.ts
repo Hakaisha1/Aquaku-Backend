@@ -50,11 +50,12 @@ export class CloudinaryClient implements CloudinaryClientPort {
     const assetFolder = purpose === 'forum' ? 'aquaku/forum' : 'aquaku/listings';
     const allowedFormats = 'jpg,png,webp';
     const uploadPreset = credentials.uploadPreset;
+    // NOTE: Do NOT include resource_type in parameters to sign. Cloudinary excludes
+    // file, cloud_name, resource_type, api_key, and signature from the upload signature.
     const signature = cloudinarySignature({
       allowed_formats: allowedFormats,
       asset_folder: assetFolder,
       public_id: publicId,
-      resource_type: 'image',
       timestamp,
       upload_preset: uploadPreset,
       overwrite: 'false',

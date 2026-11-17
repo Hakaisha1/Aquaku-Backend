@@ -40,7 +40,7 @@ describe('CloudinaryClient', () => {
   });
 
   describe('createUploadSignature', () => {
-    it('signs and includes resource_type: image', () => {
+    it('signs upload parameters without resource_type (Cloudinary excluded param)', () => {
       const sig = client.createUploadSignature('user-1', 'listing');
       expect(sig.resourceType).toBe('image');
       expect(sig.allowedFormats).toBe('jpg,png,webp');
@@ -48,7 +48,6 @@ describe('CloudinaryClient', () => {
         allowed_formats: sig.allowedFormats,
         asset_folder: sig.assetFolder,
         public_id: sig.publicId,
-        resource_type: 'image',
         timestamp: sig.timestamp,
         upload_preset: sig.uploadPreset,
         overwrite: 'false',
