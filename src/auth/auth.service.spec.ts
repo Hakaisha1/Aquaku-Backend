@@ -73,10 +73,9 @@ function createHarness(appEnv: RuntimeConfig['appEnv'] = 'test', otpIdConfigured
 }
 
 describe('AuthService', () => {
-  it('registers with normalized identities, a password hash, and development-only OTP delivery', async () => {
-    const { service, tx, sender } = createHarness();
-    tx.user.create.mockResolvedValue({ ...userRow, email: 'person@example.com' });
-    tx.otpChallenge.create.mockResolvedValue({});
+  it('registers with normalized identities and a password hash without auto-sending OTP', async () => {
+    const { service, prisma, sender, otpId } = createHarness();
+    prisma.user.create.mockResolvedValue({ ...userRow, email: 'person@example.com' });
 
     const result = await service.register({
       email: ' Person@Example.com ',
@@ -85,22 +84,22 @@ describe('AuthService', () => {
       phone_number: '0812 3456 7890',
     });
 
-    const createArgs = tx.user.create.mock.calls[0][0] as {
+    const createArgs = prisma.user.create.mock.calls[0][0] as {
       data: { email: string; phoneNumber: string; passwordHash: string; displayName: string };
     };
     expect(createArgs.data.email).toBe('person@example.com');
     expect(createArgs.data.phoneNumber).toBe('+6281234567890');
     expect(createArgs.data.displayName).toBe('Person');
     expect(createArgs.data.passwordHash).not.toContain('correct horse battery staple');
-    expect(result.development_otp).toMatch(/^\d{6}$/);
-    expect(sender.sent).toEqual([{ phoneNumber: '+6281234567890', code: result.development_otp }]);
+    expect(result.user.email).toBe('person@example.com');
+    expect(result).not.toHaveProperty('development_otp');
+    expect(sender.sent).toEqual([]);
+    expect(otpId.requestPhoneOtp).not.toHaveBeenCalled();
   });
 
-  it('registers with OTP.ID without returning or storing the OTP code', async () => {
-    const { service, prisma, tx, otpId } = createHarness('production', true);
-    tx.user.create.mockResolvedValue({ ...userRow, email: 'person@example.com' });
-    tx.otpChallenge.create.mockResolvedValue({});
-    prisma.otpChallenge.updateMany.mockResolvedValue({ count: 1 });
+  it('registers in production without calling OTP.ID, preserving prepaid credits until requested', async () => {
+    const { service, prisma, otpId } = createHarness('production', true);
+    prisma.user.create.mockResolvedValue({ ...userRow, email: 'person@example.com' });
 
     const result = await service.register({
       email: 'person@example.com',
@@ -109,35 +108,20 @@ describe('AuthService', () => {
       phone_number: '081234567890',
     });
 
-    expect(otpId.requestPhoneOtp).toHaveBeenCalledWith('+6281234567890', expect.any(String));
+    expect(result.user.email).toBe('person@example.com');
+    expect(otpId.requestPhoneOtp).not.toHaveBeenCalled();
     expect(result).not.toHaveProperty('development_otp');
-    const challenge = tx.otpChallenge.create.mock.calls[0][0] as {
-      data: { codeHash: string | null; externalId: string | null; providerStatus: string | null };
-    };
-    expect(challenge.data).toMatchObject({ codeHash: null, providerStatus: 'requesting' });
-    expect(challenge.data.externalId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(prisma.otpChallenge.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        providerOtpId: 'OTP20261112ABCD000001',
-        providerStatus: 'sent',
-      }),
-    }));
   });
 
-  it('does not allow local OTP delivery in production without OTP.ID configuration', async () => {
+  it('does not allow local OTP resend in production without OTP.ID configuration', async () => {
     const { service, prisma } = createHarness('production');
-    await expect(service.register({
-      email: 'person@example.com',
-      password: 'correct horse battery staple',
-      display_name: 'Person',
-      phone_number: '081234567890',
-    })).rejects.toThrow();
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    prisma.user.findUnique.mockResolvedValue(userRow);
+    await expect(service.resendOtp(userRow.id)).rejects.toThrow();
   });
 
   it('maps duplicate unique values to a conflict without exposing database details', async () => {
-    const { service, tx } = createHarness();
-    tx.user.create.mockRejectedValue({ code: 'P2002', meta: { target: ['email'] } });
+    const { service, prisma } = createHarness();
+    prisma.user.create.mockRejectedValue({ code: 'P2002', meta: { target: ['email'] } });
     await expect(service.register({
       email: 'person@example.com',
       password: 'correct horse battery staple',

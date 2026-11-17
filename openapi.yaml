@@ -63,8 +63,8 @@ paths:
   /auth/register:
     post:
       security: []
-      summary: Register an account and request phone verification
-      description: Meminta OTP WhatsApp outbound melalui OTP.ID jika OTP_ID_API_KEY dikonfigurasi pada backend. Kode OTP tidak dikembalikan dalam response. development_otp hanya tersedia bila key tidak dikonfigurasi dan APP_ENV development/test; production memerlukan OTP_ID_API_KEY. Jangan pernah mengekspos API key ke client.
+      summary: Register an account
+      description: Membuat akun baru tanpa otomatis mengirimkan OTP. Pengiriman OTP dilakukan secara on-demand melalui /auth/otp/resend saat pengguna meminta verifikasi nomor WhatsApp untuk menghemat kredit provider.
       requestBody:
         required: true
         content:
@@ -79,7 +79,7 @@ paths:
               required: [email, password, display_name, phone_number]
       responses:
         '201':
-          description: Akun dibuat dan OTP diminta. development_otp hanya tersedia tanpa OTP_ID_API_KEY pada APP_ENV development/test; jika OTP.ID aktif, kode dikirim melalui WhatsApp dan tidak dikembalikan.
+          description: Akun berhasil dibuat. Kode OTP tidak dikirimkan otomatis saat registrasi. Pengguna dapat meminta OTP kapan pun melalui endpoint /auth/otp/resend.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RegisterResponse' }
@@ -787,7 +787,7 @@ paths:
   /marketplace/media/upload-signatures:
     post:
       summary: Request a Cloudinary signed upload
-      description: Klien mengunggah langsung ke Cloudinary dengan parameter yang dikembalikan, lalu memanggil confirm-upload. Preset harus membatasi foto ke JPEG/PNG/WebP maksimal 5 MB.
+      description: Upload the file and the returned api_key, timestamp, public_id, asset_folder, allowed_formats, upload_preset, overwrite, and signature unchanged as multipart form fields. Use cloud_name in the Cloudinary URL and asset_id only for confirm-upload. asset_folder is aquaku/listings. Requires a verified-phone account. The preset must restrict images to JPEG/PNG/WebP up to 5 MB.
       responses:
         '201':
           description: Parameter signed upload dan ID aset lokal
@@ -1007,7 +1007,7 @@ paths:
   /forum/media/upload-signatures:
     post:
       summary: Request a signed upload for a forum photo
-      description: Klien mengunggah langsung ke Cloudinary memakai parameter ini, lalu memanggil confirm-upload. Foto JPEG/PNG/WebP maksimal 5 MB.
+      description: Upload the file and the returned api_key, timestamp, public_id, asset_folder, allowed_formats, upload_preset, overwrite, and signature unchanged as multipart form fields. Use cloud_name in the Cloudinary URL and asset_id only for confirm-upload. asset_folder is aquaku/forum. Requires a verified-phone account. Photos must be JPEG/PNG/WebP up to 5 MB.
       responses:
         '201':
           description: Parameter signed upload dan ID aset lokal

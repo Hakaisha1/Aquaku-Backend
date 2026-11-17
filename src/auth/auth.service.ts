@@ -75,47 +75,19 @@ export class AuthService {
   ) {}
 
   async register(input: RegisterDto): Promise<RegistrationResult> {
-    this.ensureOtpProviderAvailable();
     const email = input.email.trim().toLowerCase();
     const phoneNumber = normalizeIndonesianPhone(input.phone_number);
     const displayName = input.display_name.trim();
     if (!displayName) throw new BadRequestException();
 
-    const usesOtpId = this.otpId.isConfigured;
-    const code = usesOtpId ? undefined : createOtpCode();
-    const externalId = usesOtpId ? randomUUID() : null;
     const passwordHash = await hashPassword(input.password);
-    const now = new Date();
     try {
-      const user = await this.prisma.$transaction(async (tx) => {
-        const created = await tx.user.create({
-          data: { email, phoneNumber, passwordHash, displayName },
-          select: userSelection,
-        });
-        await tx.otpChallenge.create({
-          data: {
-            userId: created.id,
-            codeHash: code === undefined ? null : this.hashOtp(created.id, code),
-            providerOtpId: null,
-            externalId,
-            providerStatus: usesOtpId ? 'requesting' : null,
-            expiresAt: new Date(now.getTime() + OTP_TTL_MILLISECONDS),
-            lastSentAt: now,
-          },
-        });
-        return created;
+      const user = await this.prisma.user.create({
+        data: { email, phoneNumber, passwordHash, displayName },
+        select: userSelection,
       });
-      if (usesOtpId && externalId) {
-        await this.requestAndSaveOtpIdChallenge(user.id, phoneNumber, externalId);
-      } else if (code !== undefined) {
-        await this.otpSender.send(phoneNumber, code);
-      }
       return {
         user: this.toUserProfile(user),
-        ...(!usesOtpId && code !== undefined &&
-          (this.config.appEnv === 'development' || this.config.appEnv === 'test')
-          ? { development_otp: code }
-          : {}),
       };
     } catch (error: unknown) {
       if (isUniqueConstraintError(error)) throw new ConflictException();
