@@ -71,7 +71,7 @@ export class ForumController {
   @Delete('posts/:postId')
   @UseGuards(AccessTokenGuard)
   async deletePost(@CurrentUser() user: AuthenticatedUser, @Param('postId') postId: string) {
-    return { data: await this.forum.deletePost(user, postId) };
+    return { data: await this.forum.deletePost(user, postId, user.role === 'admin') };
   }
 
   @Post('posts/:postId/comments')
@@ -91,7 +91,7 @@ export class ForumController {
     @Param('postId') postId: string,
     @Param('commentId') commentId: string,
   ) {
-    return { data: await this.forum.deleteComment(user, postId, commentId) };
+    return { data: await this.forum.deleteComment(user, postId, commentId, user.role === 'admin') };
   }
 
   @Post('posts/:postId/reports')
