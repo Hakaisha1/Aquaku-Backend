@@ -14,6 +14,8 @@ const DAY_MILLISECONDS = 86_400_000;
 const ENTITLEMENT_DAYS = 30;
 const maximumProofBytes = 5 * 1024 * 1024;
 const maximumAddonSlots = 1000;
+const SLOT_ADDON_PRICE_PER_SLOT = 10_000;
+const COOLDOWN_BYPASS_PRICE = 10_000;
 const tierOrder: Record<Tier, number> = { PERSONAL: 0, TOKO: 1, JURAGAN: 2 };
 const planCatalog = [
   { tier: Tier.TOKO, price: 40_000, period_days: ENTITLEMENT_DAYS, base_quota: 30, listing_days: 60 },
@@ -100,11 +102,22 @@ export class MarketplaceBenefitsService {
   async createAddonRequest(user: AuthenticatedUser, input: CreateAddonRequestDto, proof?: UploadedProof) {
     this.assertVerifiedPhone(user);
     const kind = input.kind as BenefitRequestKind;
-    if (kind === BenefitRequestKind.SLOT_ADDON && (input.slots === undefined || input.slots > maximumAddonSlots)) {
-      throw new BadRequestException(`Slot add-on requests must specify 1 to ${maximumAddonSlots} slots`);
+    let expectedPrice: number;
+    if (kind === BenefitRequestKind.SLOT_ADDON) {
+      if (input.slots === undefined || input.slots < 1 || input.slots > maximumAddonSlots) {
+        throw new BadRequestException(`Slot add-on requests must specify 1 to ${maximumAddonSlots} slots`);
+      }
+      expectedPrice = input.slots * SLOT_ADDON_PRICE_PER_SLOT;
+    } else if (kind === BenefitRequestKind.COOLDOWN_BYPASS) {
+      if (input.slots !== undefined) {
+        throw new BadRequestException('Cooldown bypass requests cannot include slots');
+      }
+      expectedPrice = COOLDOWN_BYPASS_PRICE;
+    } else {
+      throw new BadRequestException('Unknown add-on kind');
     }
-    if (kind === BenefitRequestKind.COOLDOWN_BYPASS && input.slots !== undefined) {
-      throw new BadRequestException('Cooldown bypass requests cannot include slots');
+    if (input.payment_amount !== expectedPrice) {
+      throw new BadRequestException(`The transfer amount must match the required price of ${expectedPrice}`);
     }
     const proofData = this.readProof(proof);
     try {

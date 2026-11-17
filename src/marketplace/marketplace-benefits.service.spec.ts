@@ -32,6 +32,7 @@ function setup() {
     benefitRequest: { create: jest.fn().mockResolvedValue(row) },
   };
   const prisma = {
+    ...tx,
     $transaction: jest.fn(async (operation: (transaction: typeof tx) => unknown) => operation(tx)),
   } as unknown as PrismaService;
   return { service: new MarketplaceBenefitsService(prisma), prisma, tx, row };
@@ -80,5 +81,50 @@ describe('MarketplaceBenefitsService', () => {
       { buffer: Buffer.from('%PDF-1.7'), size: 8 },
     )).rejects.toThrow('must match');
     expect(tx.benefitRequest.create).not.toHaveBeenCalled();
+  });
+
+  it('validates server-side payment_amount for slot add-on and cooldown bypass requests', async () => {
+    const { service, prisma } = setup();
+    const validPdf = Buffer.from('%PDF-1.7 valid pdf proof');
+
+    (prisma.benefitRequest.create as jest.Mock).mockResolvedValueOnce({
+      id: 'slot-req-1',
+      kind: BenefitRequestKind.SLOT_ADDON,
+      status: BenefitRequestStatus.PENDING,
+      paymentAmount: 20_000,
+      requestedSlots: 2,
+    });
+    const slotResult = await service.createAddonRequest(
+      user,
+      { kind: 'SLOT_ADDON', slots: 2, payment_amount: 20_000 },
+      { buffer: validPdf, size: validPdf.length },
+    );
+    expect(slotResult).toBeDefined();
+
+    await expect(service.createAddonRequest(
+      user,
+      { kind: 'SLOT_ADDON', slots: 2, payment_amount: 1 },
+      { buffer: validPdf, size: validPdf.length },
+    )).rejects.toThrow('must match the required price of 20000');
+
+    (prisma.benefitRequest.create as jest.Mock).mockResolvedValueOnce({
+      id: 'cooldown-req-1',
+      kind: BenefitRequestKind.COOLDOWN_BYPASS,
+      status: BenefitRequestStatus.PENDING,
+      paymentAmount: 10_000,
+      requestedSlots: null,
+    });
+    const cooldownResult = await service.createAddonRequest(
+      user,
+      { kind: 'COOLDOWN_BYPASS', payment_amount: 10_000 },
+      { buffer: validPdf, size: validPdf.length },
+    );
+    expect(cooldownResult).toBeDefined();
+
+    await expect(service.createAddonRequest(
+      user,
+      { kind: 'COOLDOWN_BYPASS', payment_amount: 5_000 },
+      { buffer: validPdf, size: validPdf.length },
+    )).rejects.toThrow('must match the required price of 10000');
   });
 });
