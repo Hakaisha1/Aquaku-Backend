@@ -12,6 +12,7 @@ const selfSelection = {
   tier: true,
   tierExpiresAt: true,
   verifiedStore: true,
+  officialStore: true,
   role: true,
   createdAt: true,
 } as const;
@@ -59,6 +60,7 @@ export class UsersService {
           tier: true,
           tierExpiresAt: true,
           verifiedStore: true,
+          officialStore: true,
           bio: true,
         },
       }),
@@ -87,6 +89,7 @@ export class UsersService {
       avatar_url: user.avatarUrl,
       tier: effectiveTier,
       verified_store: user.verifiedStore,
+      official_store: user.officialStore,
       rating_average: ratings._avg.score,
       rating_count: ratings._count._all,
       active_listing_count: activeListingCount,
@@ -103,6 +106,7 @@ export class UsersService {
     tier: string;
     tierExpiresAt: Date | null;
     verifiedStore: boolean;
+    officialStore: boolean;
     role: string;
     createdAt: Date;
   }): UserProfile {
@@ -115,6 +119,7 @@ export class UsersService {
       tier: user.tier.toLowerCase(),
       tier_expires_at: user.tierExpiresAt,
       verified_store: user.verifiedStore,
+      official_store: user.officialStore,
       role: user.role === 'ADMIN' ? 'admin' : 'member',
       created_at: user.createdAt,
     };

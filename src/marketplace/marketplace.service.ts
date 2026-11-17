@@ -9,7 +9,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { Prisma, Tier, ListingCondition, ListingStatus, SaleTransactionStatus } from '../generated/prisma/client';
+import { Prisma, Tier, ListingCondition, ListingStatus, SaleTransactionStatus, ShopVerificationStatus } from '../generated/prisma/client';
 import { AuthenticatedUser } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 import { CLOUDINARY_CLIENT, CloudinaryClientPort } from './cloudinary-client';
@@ -49,10 +49,11 @@ const listingInclude = {
       tierExpiresAt: true,
       whatsappNumber: true,
       verifiedStore: true,
-      shop: { select: { id: true, name: true } },
+      officialStore: true,
+      shop: { select: { id: true, name: true, isOfficial: true } },
     },
   },
-  shop: { select: { id: true, name: true } },
+  shop: { select: { id: true, name: true, isOfficial: true } },
 } satisfies Prisma.ListingInclude;
 
 type ListingWithDetails = Prisma.ListingGetPayload<{ include: typeof listingInclude }>;
@@ -64,6 +65,7 @@ type AccountState = {
   phoneVerifiedAt: Date | null;
   whatsappNumber: string | null;
   personalCooldownUntil: Date | null;
+  officialStore: boolean;
 };
 
 @Injectable()
@@ -209,7 +211,13 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
     if (existing) throw new ConflictException('An account can have only one shop');
     try {
       const shop = await this.prisma.shop.create({
-        data: { ownerId: user.id, name: input.name.trim(), description: input.description?.trim() || null },
+        data: {
+          ownerId: user.id,
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+          isOfficial: Boolean(account.officialStore),
+          verificationStatus: account.officialStore ? ShopVerificationStatus.VERIFIED : ShopVerificationStatus.UNVERIFIED,
+        },
       });
       return this.presentShop(shop);
     } catch (error) {
@@ -882,7 +890,8 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
     return account.personalCooldownUntil !== null && account.personalCooldownUntil > now;
   }
 
-  private effectiveTier(account: Pick<AccountState, 'tier' | 'tierExpiresAt'>, now: Date): Tier {
+  private effectiveTier(account: Pick<AccountState, 'tier' | 'tierExpiresAt'> & { officialStore?: boolean }, now: Date): Tier {
+    if (account.officialStore) return Tier.JURAGAN;
     if (account.tier === Tier.PERSONAL) return Tier.PERSONAL;
     return account.tierExpiresAt !== null && account.tierExpiresAt > now ? account.tier : Tier.PERSONAL;
   }
@@ -898,6 +907,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
         phoneVerifiedAt: true,
         whatsappNumber: true,
         personalCooldownUntil: true,
+        officialStore: true,
       },
     });
     if (!account) throw new NotFoundException();
@@ -911,7 +921,11 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
   }
 
   private presentListing(listing: ListingWithDetails) {
-    const tier = this.effectiveTier({ tier: listing.seller.tier, tierExpiresAt: listing.seller.tierExpiresAt }, new Date());
+    const tier = this.effectiveTier({
+      tier: listing.seller.tier,
+      tierExpiresAt: listing.seller.tierExpiresAt,
+      officialStore: listing.seller.officialStore,
+    }, new Date());
     return {
       id: listing.id,
       title: listing.title,
@@ -933,7 +947,14 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
         avatar_url: listing.seller.avatarUrl,
         tier: tier.toLowerCase(),
         verified_store: listing.seller.verifiedStore,
-        shop: listing.shop,
+        official_store: listing.seller.officialStore,
+        shop: listing.shop
+          ? {
+              id: listing.shop.id,
+              name: listing.shop.name,
+              is_official: listing.shop.isOfficial,
+            }
+          : null,
         whatsapp_url: listing.seller.whatsappNumber
           ? `https://wa.me/${listing.seller.whatsappNumber.replace(/^\+/, '')}`
           : null,
@@ -953,6 +974,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
     name: string;
     description: string | null;
     verificationStatus: string;
+    isOfficial: boolean;
     createdAt: Date;
     updatedAt: Date;
   }) {
@@ -961,6 +983,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
       name: shop.name,
       description: shop.description,
       verification_status: shop.verificationStatus.toLowerCase(),
+      is_official: shop.isOfficial,
       created_at: shop.createdAt,
       updated_at: shop.updatedAt,
     };
