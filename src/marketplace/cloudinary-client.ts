@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { RUNTIME_CONFIG, RuntimeConfig } from '../config/runtime-config';
 
 export const CLOUDINARY_CLIENT = Symbol('CLOUDINARY_CLIENT');
@@ -20,6 +20,7 @@ export interface CloudinaryClientPort {
     readonly assetFolder: string;
     readonly allowedFormats: string;
     readonly uploadPreset: string;
+    readonly resourceType?: 'image';
     readonly overwrite: 'false';
     readonly signature: string;
   };
@@ -53,6 +54,7 @@ export class CloudinaryClient implements CloudinaryClientPort {
       allowed_formats: allowedFormats,
       asset_folder: assetFolder,
       public_id: publicId,
+      resource_type: 'image',
       timestamp,
       upload_preset: uploadPreset,
       overwrite: 'false',
@@ -65,6 +67,7 @@ export class CloudinaryClient implements CloudinaryClientPort {
       assetFolder,
       allowedFormats,
       uploadPreset,
+      resourceType: 'image' as const,
       overwrite: 'false' as const,
       signature,
     };
@@ -85,6 +88,7 @@ export class CloudinaryClient implements CloudinaryClientPort {
     } catch {
       throw new ServiceUnavailableException('Media provider unavailable');
     }
+    if (response.status === 404) throw new NotFoundException('Media asset not found on provider');
     if (!response.ok) throw new ServiceUnavailableException('Media provider unavailable');
     const resource = await response.json() as Record<string, unknown>;
     if (
