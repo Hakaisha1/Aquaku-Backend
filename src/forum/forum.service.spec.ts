@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
 import { ForumService } from './forum.service';
 import { ForumCategory, ForumComment, ForumModeration, ForumPost, ForumReport } from './forum.schemas';
@@ -196,5 +196,25 @@ describe('ForumService', () => {
       id: String(postId), title: 'Tank update', author: { display_name: 'Nadia' },
       photos: [{ id: assetId, url: 'https://res.cloudinary.com/test/image/upload/photo.jpg' }],
     });
+  });
+
+  it('throws NotFoundException when attempting to modify a deleted post', async () => {
+    const { service, posts, postId } = setup();
+    posts.findOneAndUpdate.mockReturnValue(queryResult(null));
+    posts.findById.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({
+            _id: postId,
+            authorId: 'other-user',
+            status: 'deleted',
+          }),
+        }),
+      }),
+    });
+
+    await expect(
+      service.updatePost({ id: 'current-user', role: 'member' } as never, String(postId), { title: 'New title' }),
+    ).rejects.toThrow(NotFoundException);
   });
 });

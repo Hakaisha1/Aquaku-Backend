@@ -566,7 +566,7 @@ export class ForumService {
   }
 
   private async assertPostOwnerOrNotFound(postId: string, userId: string, isAdmin = false): Promise<never> {
-    const post = await this.posts.findById(this.objectId(postId)).select({ authorId: 1 }).lean().exec();
+    const post = await this.posts.findById(this.objectId(postId)).select({ authorId: 1, status: 1 }).lean().exec();
     if (!post || post.status === 'deleted') throw new NotFoundException();
     if (!isAdmin && post.authorId !== userId) throw new ForbiddenException();
     throw new ConflictException('Post is not currently editable');
