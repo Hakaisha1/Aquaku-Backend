@@ -1,9 +1,11 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import helmet from 'helmet';
 import { RUNTIME_CONFIG, RuntimeConfig } from '../config/runtime-config';
 import { HttpErrorFilter } from './http-error.filter';
 
 export function configureApp(app: INestApplication): void {
   const config = app.get<RuntimeConfig>(RUNTIME_CONFIG);
+  app.use(helmet());
   app.setGlobalPrefix(config.apiPrefix.slice(1));
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,

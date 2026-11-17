@@ -159,4 +159,10 @@ describe.each([
     expect(response.headers['access-control-allow-origin']).not.toBe('https://untrusted.example.com');
     expect(response.headers['access-control-allow-credentials']).toBeUndefined();
   });
+
+  it('applies helmet security headers and removes x-powered-by', async () => {
+    const response = await request(app.getHttpServer()).get('/api/v1/unimplemented').expect(404);
+    expect(response.headers['x-powered-by']).toBeUndefined();
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+  });
 });
