@@ -9,7 +9,7 @@ import {
   signToken,
   tokenDigest,
 } from './auth-security';
-import { hashPassword } from './password-hasher';
+import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password-hasher';
 import { FakeOtpSender } from './otp-sender';
 
 const now = new Date('2026-11-09T12:00:00.000Z');
@@ -172,6 +172,19 @@ describe('AuthService', () => {
     await expect(service.login({ email: 'user@example.com', password: 'incorrect' }))
       .rejects.toBeInstanceOf(UnauthorizedException);
     expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  it('does not authenticate a nonexistent user and performs dummy password verification', async () => {
+    const { service, prisma } = createHarness();
+    prisma.user.findUnique.mockResolvedValue(null);
+    await expect(service.login({ email: 'nonexistent@example.com', password: 'incorrect' }))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  it('verifies dummy password hash fails safely without errors', async () => {
+    const result = await verifyPassword('any-password', DUMMY_PASSWORD_HASH);
+    expect(result).toBe(false);
   });
 
   it('rotates refresh tokens and rejects a token that has already been consumed', async () => {

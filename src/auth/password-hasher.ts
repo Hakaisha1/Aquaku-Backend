@@ -29,6 +29,15 @@ export async function hashPassword(password: string): Promise<string> {
   ].join('$');
 }
 
+export const DUMMY_PASSWORD_HASH = [
+  'scrypt',
+  COST,
+  BLOCK_SIZE,
+  PARALLELIZATION,
+  Buffer.alloc(16).toString('base64url'),
+  Buffer.alloc(KEY_LENGTH).toString('base64url'),
+].join('$');
+
 export async function verifyPassword(password: string, encoded: string): Promise<boolean> {
   const [algorithm, costValue, blockValue, parallelValue, saltValue, keyValue, extra] = encoded.split('$');
   if (

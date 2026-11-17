@@ -24,7 +24,7 @@ import {
   tokenDigest,
   verifyToken,
 } from './auth-security';
-import { hashPassword, verifyPassword } from './password-hasher';
+import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password-hasher';
 import { OTP_SENDER, OtpSender } from './otp-sender';
 import { OtpIdService } from './otp-id.service';
 
@@ -126,7 +126,9 @@ export class AuthService {
   async login(input: LoginDto) {
     const email = input.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
+    const passwordHash = user ? user.passwordHash : DUMMY_PASSWORD_HASH;
+    const isValid = await verifyPassword(input.password, passwordHash);
+    if (!user || !isValid) {
       throw new UnauthorizedException();
     }
     const tokens = await this.issueTokenPair(user.id);
