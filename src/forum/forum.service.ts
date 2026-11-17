@@ -24,6 +24,7 @@ import {
   ReviewForumReportDto,
   UpdateForumPostDto,
 } from './forum.dto';
+import { sanitizeForumContent, sanitizeForumTitle } from './forum-sanitizer';
 import {
   ForumCategory,
   ForumComment,
@@ -164,8 +165,8 @@ export class ForumService {
     const category = await this.categories.findOne({ _id: this.objectId(input.category_id), active: true }).lean().exec();
     if (!category) throw new BadRequestException('Forum category is unavailable');
     const photoIds = input.photo_ids ?? [];
-    const title = input.title.trim();
-    const body = input.body.trim();
+    const title = sanitizeForumTitle(input.title);
+    const body = sanitizeForumContent(input.body);
     if (!title || !body) throw new BadRequestException('Title and body cannot be blank');
     if (new Set(photoIds).size !== photoIds.length) throw new BadRequestException('Photo IDs must be unique');
 
@@ -209,11 +210,11 @@ export class ForumService {
     this.ensureMongoAvailable();
     const updates: Record<string, unknown> = {};
     if (input.title !== undefined) {
-      updates.title = input.title.trim();
+      updates.title = sanitizeForumTitle(input.title);
       if (!updates.title) throw new BadRequestException('Title cannot be blank');
     }
     if (input.body !== undefined) {
-      updates.body = input.body.trim();
+      updates.body = sanitizeForumContent(input.body);
       if (!updates.body) throw new BadRequestException('Body cannot be blank');
     }
     if (input.category_id !== undefined) {
@@ -319,7 +320,7 @@ export class ForumService {
 
   async createComment(user: AuthenticatedUser, postId: string, input: CreateForumCommentDto) {
     this.ensureMongoAvailable();
-    const body = input.body.trim();
+    const body = sanitizeForumContent(input.body);
     if (!body) throw new BadRequestException('Comment cannot be blank');
     const id = this.objectId(postId);
     const post = await this.posts.findOne({ _id: id, status: 'published' }).select({ categoryId: 1 }).lean().exec();
