@@ -1,4 +1,4 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 
 export interface ErrorEnvelope {
@@ -38,6 +38,8 @@ function middlewareStatus(exception: unknown): number {
 
 @Catch()
 export class HttpErrorFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpErrorFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const requestedStatus = exception instanceof HttpException
       ? exception.getStatus()
@@ -48,6 +50,14 @@ export class HttpErrorFilter implements ExceptionFilter {
     const error = errors[status] ?? (status >= 500
       ? errors[500]
       : { code: 'HTTP_ERROR', message: 'Request failed' });
+
+    if (status >= 500) {
+      if (exception instanceof Error) {
+        this.logger.error(`[${status}] ${exception.message}`, exception.stack);
+      } else {
+        this.logger.error(`[${status}] Unhandled error: ${String(exception)}`);
+      }
+    }
 
     // Exception messages and responses may contain credentials or database details.
     host.switchToHttp().getResponse<Response>().status(status).json({ error });
