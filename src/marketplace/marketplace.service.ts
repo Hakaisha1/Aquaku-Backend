@@ -288,7 +288,7 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
   }
 
   async deleteMediaAsset(user: AuthenticatedUser, assetId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    const publicId = await this.prisma.$transaction(async (tx) => {
       await this.lockAccount(tx, user.id);
       const asset = await tx.mediaAsset.findFirst({
         where: { id: assetId, ownerId: user.id },
@@ -307,10 +307,12 @@ export class MarketplaceService implements OnModuleInit, OnModuleDestroy {
           }
         }
       }
-      await this.cloudinary.deleteAsset(asset.publicId);
       await tx.mediaAsset.delete({ where: { id: asset.id } });
-      return { deleted: true };
+      return asset.publicId;
     }, { timeout: 10_000 });
+
+    await this.cloudinary.deleteAsset(publicId);
+    return { deleted: true };
   }
 
   async createListing(user: AuthenticatedUser, input: CreateListingDto) {

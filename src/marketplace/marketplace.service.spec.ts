@@ -48,8 +48,10 @@ function setup(overrides: { tier?: Tier; tierExpiresAt?: Date | null; cooldown?:
     ...tx,
     $transaction: jest.fn(async (operation: (transaction: typeof tx) => unknown) => operation(tx)),
   } as unknown as PrismaService;
-  const cloudinary = {} as CloudinaryClientPort;
-  return { service: new MarketplaceService(prisma, cloudinary), prisma, tx, currentAccount };
+  const cloudinary = {
+    deleteAsset: jest.fn().mockResolvedValue(undefined),
+  } as unknown as CloudinaryClientPort;
+  return { service: new MarketplaceService(prisma, cloudinary), prisma, tx, currentAccount, cloudinary };
 }
 
 describe('MarketplaceService', () => {
@@ -97,5 +99,25 @@ describe('MarketplaceService', () => {
     const { service, tx } = setup({ count: 4 });
     await service.markSold(user, 'c7deaa5a-e4cf-450c-a257-f11d9ab8e0bd');
     expect(tx.user.update).not.toHaveBeenCalled();
+  });
+
+  it('deletes media asset from DB inside transaction and calls Cloudinary delete outside transaction', async () => {
+    const { service, tx, cloudinary } = setup();
+    const asset = {
+      id: 'asset-123',
+      publicId: 'aquaku/marketplace/asset-123',
+      ownerId: userId,
+      listing: null,
+      forumPostId: null,
+    };
+    (tx as Record<string, unknown>).mediaAsset = {
+      findFirst: jest.fn().mockResolvedValue(asset),
+      delete: jest.fn().mockResolvedValue(asset),
+    };
+
+    const result = await service.deleteMediaAsset(user, 'asset-123');
+    expect(result).toEqual({ deleted: true });
+    expect(((tx as Record<string, any>).mediaAsset.delete)).toHaveBeenCalledWith({ where: { id: 'asset-123' } });
+    expect(cloudinary.deleteAsset).toHaveBeenCalledWith('aquaku/marketplace/asset-123');
   });
 });
