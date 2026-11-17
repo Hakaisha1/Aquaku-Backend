@@ -43,7 +43,12 @@ function createHarness(appEnv: RuntimeConfig['appEnv'] = 'test', otpIdConfigured
       callback(tx as unknown as Prisma.TransactionClient)),
     user: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     otpChallenge: { findUnique: jest.fn(), updateMany: jest.fn() },
-    refreshToken: { findUnique: jest.fn(), create: jest.fn() },
+    refreshToken: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      update: jest.fn().mockResolvedValue({}),
+    },
   };
   const config = {
     appEnv,
@@ -200,6 +205,60 @@ describe('AuthService', () => {
 
     tx.refreshToken.updateMany.mockResolvedValue({ count: 0 });
     await expect(service.refresh(refreshToken)).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('revokes all active refresh tokens for the user when a revoked token is reused (RFC 6819)', async () => {
+    const { service, prisma } = createHarness();
+    const tokenId = '68446254-0f32-4dd5-84e8-cf8a72239457';
+    const refreshToken = signToken(
+      userRow.id,
+      'refresh',
+      secrets.jwtRefreshSecret,
+      REFRESH_TOKEN_TTL_SECONDS,
+      Math.floor(Date.now() / 1000),
+      tokenId,
+    );
+    prisma.refreshToken.findUnique.mockResolvedValue({
+      id: tokenId,
+      userId: userRow.id,
+      tokenHash: tokenDigest(refreshToken),
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: new Date(Date.now() - 5_000),
+      user: userRow,
+    });
+
+    await expect(service.refresh(refreshToken)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: userRow.id, revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+  });
+
+  it('revokes the refresh token upon logout', async () => {
+    const { service, prisma } = createHarness();
+    const tokenId = '68446254-0f32-4dd5-84e8-cf8a72239457';
+    const refreshToken = signToken(
+      userRow.id,
+      'refresh',
+      secrets.jwtRefreshSecret,
+      REFRESH_TOKEN_TTL_SECONDS,
+      Math.floor(Date.now() / 1000),
+      tokenId,
+    );
+    prisma.refreshToken.findUnique.mockResolvedValue({
+      id: tokenId,
+      userId: userRow.id,
+      tokenHash: tokenDigest(refreshToken),
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+    });
+
+    const result = await service.logout(refreshToken);
+    expect(result).toEqual({ logged_out: true });
+    expect(prisma.refreshToken.update).toHaveBeenCalledWith({
+      where: { id: tokenId },
+      data: { revokedAt: expect.any(Date) },
+    });
   });
 
   it('verifies OTP.ID codes before marking a phone verified', async () => {

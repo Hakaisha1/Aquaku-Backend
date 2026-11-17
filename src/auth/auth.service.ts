@@ -134,6 +134,10 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string) {
+    return this.rotateRefreshToken(refreshToken);
+  }
+
+  async rotateRefreshToken(refreshToken: string) {
     const claims = verifyToken(refreshToken, 'refresh', this.config.jwtRefreshSecret);
     if (!claims) throw new UnauthorizedException();
 
@@ -144,9 +148,24 @@ export class AuthService {
       include: { user: { select: userSelection } },
     });
     if (
-      !existing || existing.userId !== claims.sub || existing.revokedAt ||
-      existing.expiresAt <= now || !constantTimeTextEqual(existing.tokenHash, tokenHash)
-    ) throw new UnauthorizedException();
+      !existing ||
+      existing.userId !== claims.sub ||
+      !constantTimeTextEqual(existing.tokenHash, tokenHash)
+    ) {
+      throw new UnauthorizedException();
+    }
+
+    if (existing.revokedAt) {
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: existing.userId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      throw new UnauthorizedException('Refresh token reuse detected');
+    }
+
+    if (existing.expiresAt <= now) {
+      throw new UnauthorizedException();
+    }
 
     const nextTokenId = randomUUID();
     const nextRefreshToken = signToken(
@@ -193,6 +212,34 @@ export class AuthService {
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
       user: this.toUserProfile(existing.user),
     };
+  }
+
+  async logout(refreshToken: string): Promise<{ logged_out: boolean }> {
+    const claims = verifyToken(refreshToken, 'refresh', this.config.jwtRefreshSecret);
+    if (!claims) throw new UnauthorizedException();
+
+    const now = new Date();
+    const tokenHash = tokenDigest(refreshToken);
+    const existing = await this.prisma.refreshToken.findUnique({
+      where: { id: claims.jti },
+    });
+
+    if (
+      !existing ||
+      existing.userId !== claims.sub ||
+      !constantTimeTextEqual(existing.tokenHash, tokenHash)
+    ) {
+      throw new UnauthorizedException();
+    }
+
+    if (!existing.revokedAt) {
+      await this.prisma.refreshToken.update({
+        where: { id: existing.id },
+        data: { revokedAt: now },
+      });
+    }
+
+    return { logged_out: true };
   }
 
   async verifyPhone(userId: string, code: string): Promise<UserProfile> {

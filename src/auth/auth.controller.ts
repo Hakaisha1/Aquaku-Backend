@@ -33,6 +33,12 @@ export class AuthController {
     return { data: await this.authService.refresh(body.refresh_token) };
   }
 
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Body() body: RefreshDto) {
+    return { data: await this.authService.logout(body.refresh_token) };
+  }
+
   @Post(['verify-phone', 'verify-otp'])
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: seconds(60) } })
