@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from './config/config.module';
 import { RUNTIME_CONFIG, RuntimeConfig } from './config/runtime-config';
@@ -11,6 +13,12 @@ import { ForumModule } from './forum/forum.module';
 @Module({
   imports: [
     ConfigModule,
+    ThrottlerModule.forRoot([
+      {
+        ttl: seconds(60),
+        limit: 100,
+      },
+    ]),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [RUNTIME_CONFIG],
@@ -26,6 +34,12 @@ import { ForumModule } from './forum/forum.module';
     UsersModule,
     MarketplaceModule,
     ForumModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

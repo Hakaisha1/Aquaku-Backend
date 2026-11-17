@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Throttle, seconds } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto, RefreshDto, RegisterDto, VerifyPhoneDto } from './auth.dto';
 import { AccessTokenGuard } from './auth.guards';
@@ -10,6 +11,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   async register(@Body() body: RegisterDto) {
     const result = await this.authService.register(body);
     return {
@@ -20,6 +22,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   async login(@Body() body: LoginDto) {
     return { data: await this.authService.login(body) };
   }
@@ -30,15 +33,17 @@ export class AuthController {
     return { data: await this.authService.refresh(body.refresh_token) };
   }
 
-  @Post('verify-phone')
+  @Post(['verify-phone', 'verify-otp'])
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   @UseGuards(AccessTokenGuard)
   async verifyPhone(@CurrentUser() user: AuthenticatedUser, @Body() body: VerifyPhoneDto) {
     return { data: await this.authService.verifyPhone(user.id, body.code) };
   }
 
-  @Post('otp/resend')
+  @Post(['otp/resend', 'request-otp'])
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   @UseGuards(AccessTokenGuard)
   async resendOtp(@CurrentUser() user: AuthenticatedUser) {
     return { data: await this.authService.resendOtp(user.id) };
