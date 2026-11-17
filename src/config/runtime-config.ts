@@ -10,7 +10,7 @@ export interface RuntimeConfig {
   readonly mongoUri: string;
   readonly jwtAccessSecret: string;
   readonly jwtRefreshSecret: string;
-  readonly corsOrigin?: string;
+  readonly corsOrigin?: string | string[];
   readonly cloudinaryCloudName?: string;
   readonly cloudinaryApiKey?: string;
   readonly cloudinaryApiSecret?: string;
@@ -30,7 +30,7 @@ export class ConfigValidationError extends Error {
   }
 }
 
-function validDatabaseUrl(value: string): boolean {
+function validDatabaseUrl(value: string, appEnv: string = 'development'): boolean {
   if (value.length > 4096 || /[\s\\\p{Cc}]/u.test(value)) {
     return false;
   }
@@ -41,7 +41,7 @@ function validDatabaseUrl(value: string): boolean {
     const host = new URL(`http://${url.host}`);
     // Reject malformed escapes even in credentials and connection options.
     decodeURIComponent(value);
-    return (
+    const isValid = (
       (url.protocol === 'postgres:' || url.protocol === 'postgresql:') &&
       Boolean(url.hostname) && Boolean(host.hostname) &&
       (!url.port || (/^[0-9]+$/.test(url.port) && Number(url.port) >= 1 && Number(url.port) <= 65535)) &&
@@ -50,6 +50,16 @@ function validDatabaseUrl(value: string): boolean {
       Buffer.byteLength(database, 'utf8') <= 63 &&
       !/[/\\\p{Cc}]/u.test(database)
     );
+    if (!isValid) return false;
+
+    if (appEnv === 'production') {
+      const sslmode = url.searchParams.get('sslmode')?.toLowerCase();
+      const ssl = url.searchParams.get('ssl')?.toLowerCase();
+      const isSecure = sslmode === 'require' || sslmode === 'verify-full' || sslmode === 'verify-ca' || ssl === 'true';
+      if (!isSecure) return false;
+    }
+
+    return true;
   } catch {
     return false;
   }
@@ -77,39 +87,65 @@ function parseCloudinaryUrl(value: string): {
   }
 }
 
-function validMongoUrl(value: string): boolean {
+function validMongoUrl(value: string, appEnv: string = 'development'): boolean {
   if (value.length > 4096 || /[\s\\\p{Cc}]/u.test(value)) return false;
   try {
     const url = new URL(value);
     decodeURIComponent(value);
     const databaseName = decodeURIComponent(url.pathname.slice(1));
-    return (
+    const isValid = (
       (url.protocol === 'mongodb:' || url.protocol === 'mongodb+srv:') &&
       Boolean(url.hostname) && (!databaseName || !databaseName.includes('/')) &&
       !url.hash && (url.protocol !== 'mongodb+srv:' || !url.port)
     );
+    if (!isValid) return false;
+
+    if (appEnv === 'production') {
+      const isSrv = url.protocol === 'mongodb+srv:';
+      const tls = url.searchParams.get('tls')?.toLowerCase();
+      const ssl = url.searchParams.get('ssl')?.toLowerCase();
+      const isSecure = isSrv || tls === 'true' || ssl === 'true';
+      if (!isSecure) return false;
+    }
+
+    return true;
   } catch {
     return false;
   }
 }
 
-function parseCorsOrigin(value: string): string | undefined {
-  if (
-    value.length > 2048 || /[\s\\*\p{Cc}]/u.test(value) ||
-    !/^https?:\/\/[^/?#]+\/?$/i.test(value)
-  ) return undefined;
-  try {
-    const url = new URL(value);
+function parseCorsOrigin(value: string, appEnv: string = 'development'): string | string[] | undefined {
+  if (value.length > 4096 || value.startsWith(' ') || value.endsWith(' ')) return undefined;
+  const rawParts = value.split(',').map((p) => p.trim()).filter(Boolean);
+  if (rawParts.length === 0) return undefined;
+
+  const validOrigins: string[] = [];
+  for (const part of rawParts) {
     if (
-      (url.protocol !== 'http:' && url.protocol !== 'https:') ||
-      !url.hostname || url.username || url.password ||
-      url.pathname !== '/' || url.search || url.hash ||
-      (url.port && Number(url.port) < 1)
+      part.length > 2048 || /[\s\\*\p{Cc}]/u.test(part) ||
+      !/^https?:\/\/[^/?#]+\/?$/i.test(part)
     ) return undefined;
-    return url.origin;
-  } catch {
-    return undefined;
+
+    try {
+      const url = new URL(part);
+      if (
+        (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+        !url.hostname || url.username || url.password ||
+        (url.pathname !== '/' && url.pathname !== '') || url.search || url.hash ||
+        (url.port && Number(url.port) < 1)
+      ) return undefined;
+
+      if (appEnv === 'production' && url.protocol !== 'https:') {
+        return undefined;
+      }
+
+      validOrigins.push(url.origin);
+    } catch {
+      return undefined;
+    }
   }
+
+  return validOrigins.length === 1 ? validOrigins[0] : validOrigins;
 }
 
 export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> {
@@ -125,7 +161,7 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
     (appEnv === 'production' ? '' : developmentRefreshSecret);
   const corsOrigin = env.CORS_ORIGIN === undefined
     ? undefined
-    : parseCorsOrigin(env.CORS_ORIGIN);
+    : parseCorsOrigin(env.CORS_ORIGIN, appEnv);
   const cloudinaryUrl = env.CLOUDINARY_URL;
   const hasCloudinaryUrl = cloudinaryUrl !== undefined && cloudinaryUrl !== '';
   const individualCloudinaryValues = [
@@ -148,8 +184,8 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<RuntimeConfig> 
   if (apiPrefix.length > 128 || !/^\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/.test(apiPrefix)) {
     fields.push('API_PREFIX');
   }
-  if (!validDatabaseUrl(databaseUrl)) fields.push('DATABASE_URL');
-  if (!validMongoUrl(mongoUri)) fields.push('MONGODB_URI');
+  if (!validDatabaseUrl(databaseUrl, appEnv)) fields.push('DATABASE_URL');
+  if (!validMongoUrl(mongoUri, appEnv)) fields.push('MONGODB_URI');
   if (jwtAccessSecret.length < 32) fields.push('JWT_ACCESS_SECRET');
   if (jwtRefreshSecret.length < 32) fields.push('JWT_REFRESH_SECRET');
   if (jwtAccessSecret && jwtAccessSecret === jwtRefreshSecret) fields.push('JWT_REFRESH_SECRET');

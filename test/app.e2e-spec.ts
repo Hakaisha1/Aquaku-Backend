@@ -49,8 +49,8 @@ describe.each([
 
   beforeAll(async () => {
     const config = validateConfig({
-      APP_ENV: 'production', DATABASE_URL: 'postgresql://localhost/aquaku_test',
-      MONGODB_URI: 'mongodb://localhost/aquaku_test',
+      APP_ENV: 'production', DATABASE_URL: 'postgresql://localhost/aquaku_test?sslmode=require',
+      MONGODB_URI: 'mongodb://localhost/aquaku_test?tls=true',
       JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
       OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
       ...(origin === undefined ? {} : { CORS_ORIGIN: origin }),

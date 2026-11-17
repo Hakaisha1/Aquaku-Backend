@@ -1,7 +1,7 @@
 import { ConfigValidationError, validateConfig } from './runtime-config';
 
-const databaseUrl = 'postgresql://aquaku:secret@localhost:5432/aquaku';
-const mongoUri = 'mongodb://127.0.0.1:27017/aquaku';
+const databaseUrl = 'postgresql://aquaku:secret@localhost:5432/aquaku?sslmode=require';
+const mongoUri = 'mongodb://127.0.0.1:27017/aquaku?tls=true';
 const base = { DATABASE_URL: databaseUrl };
 
 describe('validateConfig', () => {
@@ -34,9 +34,13 @@ describe('validateConfig', () => {
   });
 
   it('accepts a Railway MongoDB URI without a database path', () => {
-    const railwayUri = 'mongodb://mongo:secret@mongo.railway.internal:27017';
-    expect(validateConfig({ ...base, APP_ENV: 'production', MONGODB_URI: railwayUri,
-      JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
+    const railwayUri = 'mongodb://mongo:secret@mongo.railway.internal:27017?tls=true';
+    expect(validateConfig({
+      ...base,
+      APP_ENV: 'production',
+      MONGODB_URI: railwayUri,
+      JWT_ACCESS_SECRET: 'a'.repeat(32),
+      JWT_REFRESH_SECRET: 'b'.repeat(32),
       OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
     }).mongoUri).toBe(railwayUri);
   });
@@ -116,7 +120,6 @@ describe('validateConfig', () => {
     ['CORS_ORIGIN', 'https://example.com#'],
     ['CORS_ORIGIN', 'https://example.com?query=true'],
     ['CORS_ORIGIN', 'https://example.com#fragment'],
-    ['CORS_ORIGIN', 'https://example.com,https://other.example.com'],
     ['CORS_ORIGIN', ' https://example.com'],
     ['CORS_ORIGIN', 'http://localhost:0'],
     ['CORS_ORIGIN', 'http://localhost:65536'],
@@ -127,6 +130,51 @@ describe('validateConfig', () => {
 
   it.each(['http://localhost:5173', 'https://example.com'])('accepts CORS_ORIGIN %s', (CORS_ORIGIN) => {
     expect(validateConfig({ ...base, CORS_ORIGIN }).corsOrigin).toBe(CORS_ORIGIN);
+  });
+
+  it('accepts comma-separated CORS_ORIGIN in production and enforces https', () => {
+    const prodBase = {
+      ...base,
+      APP_ENV: 'production',
+      MONGODB_URI: mongoUri,
+      JWT_ACCESS_SECRET: 'a'.repeat(32),
+      JWT_REFRESH_SECRET: 'b'.repeat(32),
+      OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
+    };
+    const config = validateConfig({
+      ...prodBase,
+      CORS_ORIGIN: 'https://aquaku.id, https://admin.aquaku.id',
+    });
+    expect(config.corsOrigin).toEqual(['https://aquaku.id', 'https://admin.aquaku.id']);
+
+    // Plaintext http in production must be rejected
+    expect(() => validateConfig({
+      ...prodBase,
+      CORS_ORIGIN: 'http://aquaku.id',
+    })).toThrow('Invalid configuration fields: CORS_ORIGIN');
+  });
+
+  it('enforces SSL/TLS for database connections in production', () => {
+    const prodSecrets = {
+      APP_ENV: 'production',
+      JWT_ACCESS_SECRET: 'a'.repeat(32),
+      JWT_REFRESH_SECRET: 'b'.repeat(32),
+      OTP_ID_API_KEY: '550e8400-e29b-41d4-a716-446655440000',
+    };
+
+    // Plaintext PostgreSQL without sslmode in production must be rejected
+    expect(() => validateConfig({
+      ...prodSecrets,
+      DATABASE_URL: 'postgresql://localhost:5432/aquaku',
+      MONGODB_URI: 'mongodb://localhost:27017/aquaku?tls=true',
+    })).toThrow('Invalid configuration fields: DATABASE_URL');
+
+    // Plaintext MongoDB without TLS in production must be rejected
+    expect(() => validateConfig({
+      ...prodSecrets,
+      DATABASE_URL: 'postgresql://localhost:5432/aquaku?sslmode=require',
+      MONGODB_URI: 'mongodb://localhost:27017/aquaku',
+    })).toThrow('Invalid configuration fields: MONGODB_URI');
   });
 
   it('accepts a complete Cloudinary configuration while keeping it optional', () => {
